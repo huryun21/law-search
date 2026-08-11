@@ -1,0 +1,2215 @@
+{
+  "metadata": {
+    "source_url": "https://code.go.kr/stdcode/orgCodeL.do",
+    "law_api_url": "https://open.law.go.kr/LSO/openApi/guideResult.do?htmlName=ordinListGuide",
+    "retrieved_on": "2026-08-12",
+    "selection_note": "17-region law API compatibility set; 2026-07-01 transition rows retained where required"
+  },
+  "regions": [
+    {
+      "province_name": "강원특별자치도",
+      "municipality_name": null,
+      "org": "6530000",
+      "sborg": null,
+      "aliases": [
+        "강원"
+      ]
+    },
+    {
+      "province_name": "강원특별자치도",
+      "municipality_name": "강릉시",
+      "org": "6530000",
+      "sborg": "4201000",
+      "aliases": [
+        "강원/강릉"
+      ]
+    },
+    {
+      "province_name": "강원특별자치도",
+      "municipality_name": "고성군",
+      "org": "6530000",
+      "sborg": "4341000",
+      "aliases": [
+        "강원/고성"
+      ]
+    },
+    {
+      "province_name": "강원특별자치도",
+      "municipality_name": "동해시",
+      "org": "6530000",
+      "sborg": "4211000",
+      "aliases": [
+        "강원/동해"
+      ]
+    },
+    {
+      "province_name": "강원특별자치도",
+      "municipality_name": "삼척시",
+      "org": "6530000",
+      "sborg": "4241000",
+      "aliases": [
+        "강원/삼척"
+      ]
+    },
+    {
+      "province_name": "강원특별자치도",
+      "municipality_name": "속초시",
+      "org": "6530000",
+      "sborg": "4231000",
+      "aliases": [
+        "강원/속초"
+      ]
+    },
+    {
+      "province_name": "강원특별자치도",
+      "municipality_name": "양구군",
+      "org": "6530000",
+      "sborg": "4321000",
+      "aliases": [
+        "강원/양구"
+      ]
+    },
+    {
+      "province_name": "강원특별자치도",
+      "municipality_name": "양양군",
+      "org": "6530000",
+      "sborg": "4351000",
+      "aliases": [
+        "강원/양양"
+      ]
+    },
+    {
+      "province_name": "강원특별자치도",
+      "municipality_name": "영월군",
+      "org": "6530000",
+      "sborg": "4271000",
+      "aliases": [
+        "강원/영월"
+      ]
+    },
+    {
+      "province_name": "강원특별자치도",
+      "municipality_name": "원주시",
+      "org": "6530000",
+      "sborg": "4191000",
+      "aliases": [
+        "강원/원주"
+      ]
+    },
+    {
+      "province_name": "강원특별자치도",
+      "municipality_name": "인제군",
+      "org": "6530000",
+      "sborg": "4331000",
+      "aliases": [
+        "강원/인제"
+      ]
+    },
+    {
+      "province_name": "강원특별자치도",
+      "municipality_name": "정선군",
+      "org": "6530000",
+      "sborg": "4291000",
+      "aliases": [
+        "강원/정선"
+      ]
+    },
+    {
+      "province_name": "강원특별자치도",
+      "municipality_name": "철원군",
+      "org": "6530000",
+      "sborg": "4301000",
+      "aliases": [
+        "강원/철원"
+      ]
+    },
+    {
+      "province_name": "강원특별자치도",
+      "municipality_name": "춘천시",
+      "org": "6530000",
+      "sborg": "4181000",
+      "aliases": [
+        "강원/춘천"
+      ]
+    },
+    {
+      "province_name": "강원특별자치도",
+      "municipality_name": "태백시",
+      "org": "6530000",
+      "sborg": "4221000",
+      "aliases": [
+        "강원/태백"
+      ]
+    },
+    {
+      "province_name": "강원특별자치도",
+      "municipality_name": "평창군",
+      "org": "6530000",
+      "sborg": "4281000",
+      "aliases": [
+        "강원/평창"
+      ]
+    },
+    {
+      "province_name": "강원특별자치도",
+      "municipality_name": "홍천군",
+      "org": "6530000",
+      "sborg": "4251000",
+      "aliases": [
+        "강원/홍천"
+      ]
+    },
+    {
+      "province_name": "강원특별자치도",
+      "municipality_name": "화천군",
+      "org": "6530000",
+      "sborg": "4311000",
+      "aliases": [
+        "강원/화천"
+      ]
+    },
+    {
+      "province_name": "강원특별자치도",
+      "municipality_name": "횡성군",
+      "org": "6530000",
+      "sborg": "4261000",
+      "aliases": [
+        "강원/횡성"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": null,
+      "org": "6410000",
+      "sborg": null,
+      "aliases": [
+        "경기"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "가평군",
+      "org": "6410000",
+      "sborg": "4160000",
+      "aliases": [
+        "경기/가평"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "고양시",
+      "org": "6410000",
+      "sborg": "3940000",
+      "aliases": [
+        "경기/고양"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "과천시",
+      "org": "6410000",
+      "sborg": "3970000",
+      "aliases": [
+        "경기/과천"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "광명시",
+      "org": "6410000",
+      "sborg": "3900000",
+      "aliases": [
+        "경기/광명"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "광주시",
+      "org": "6410000",
+      "sborg": "5540000",
+      "aliases": [
+        "경기/광주"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "구리시",
+      "org": "6410000",
+      "sborg": "3980000",
+      "aliases": [
+        "경기/구리"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "군포시",
+      "org": "6410000",
+      "sborg": "4020000",
+      "aliases": [
+        "경기/군포"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "김포시",
+      "org": "6410000",
+      "sborg": "4090000",
+      "aliases": [
+        "경기/김포"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "남양주시",
+      "org": "6410000",
+      "sborg": "3990000",
+      "aliases": [
+        "경기/남양주"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "동두천시",
+      "org": "6410000",
+      "sborg": "3920000",
+      "aliases": [
+        "경기/동두천"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "부천시",
+      "org": "6410000",
+      "sborg": "3860000",
+      "aliases": [
+        "경기/부천"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "성남시",
+      "org": "6410000",
+      "sborg": "3780000",
+      "aliases": [
+        "경기/성남"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "수원시",
+      "org": "6410000",
+      "sborg": "3740000",
+      "aliases": [
+        "경기/수원"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "시흥시",
+      "org": "6410000",
+      "sborg": "4010000",
+      "aliases": [
+        "경기/시흥"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "안산시",
+      "org": "6410000",
+      "sborg": "3930000",
+      "aliases": [
+        "경기/안산"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "안성시",
+      "org": "6410000",
+      "sborg": "4080000",
+      "aliases": [
+        "경기/안성"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "안양시",
+      "org": "6410000",
+      "sborg": "3830000",
+      "aliases": [
+        "경기/안양"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "양주시",
+      "org": "6410000",
+      "sborg": "5590000",
+      "aliases": [
+        "경기/양주"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "양평군",
+      "org": "6410000",
+      "sborg": "4170000",
+      "aliases": [
+        "경기/양평"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "여주시",
+      "org": "6410000",
+      "sborg": "5700000",
+      "aliases": [
+        "경기/여주"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "연천군",
+      "org": "6410000",
+      "sborg": "4140000",
+      "aliases": [
+        "경기/연천"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "오산시",
+      "org": "6410000",
+      "sborg": "4000000",
+      "aliases": [
+        "경기/오산"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "용인시",
+      "org": "6410000",
+      "sborg": "4050000",
+      "aliases": [
+        "경기/용인"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "의왕시",
+      "org": "6410000",
+      "sborg": "4030000",
+      "aliases": [
+        "경기/의왕"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "의정부시",
+      "org": "6410000",
+      "sborg": "3820000",
+      "aliases": [
+        "경기/의정부"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "이천시",
+      "org": "6410000",
+      "sborg": "4070000",
+      "aliases": [
+        "경기/이천"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "파주시",
+      "org": "6410000",
+      "sborg": "4060000",
+      "aliases": [
+        "경기/파주"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "평택시",
+      "org": "6410000",
+      "sborg": "3910000",
+      "aliases": [
+        "경기/평택"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "포천시",
+      "org": "6410000",
+      "sborg": "5600000",
+      "aliases": [
+        "경기/포천"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "하남시",
+      "org": "6410000",
+      "sborg": "4040000",
+      "aliases": [
+        "경기/하남"
+      ]
+    },
+    {
+      "province_name": "경기도",
+      "municipality_name": "화성시",
+      "org": "6410000",
+      "sborg": "5530000",
+      "aliases": [
+        "경기/화성"
+      ]
+    },
+    {
+      "province_name": "경상남도",
+      "municipality_name": null,
+      "org": "6480000",
+      "sborg": null,
+      "aliases": [
+        "경남"
+      ]
+    },
+    {
+      "province_name": "경상남도",
+      "municipality_name": "거제시",
+      "org": "6480000",
+      "sborg": "5370000",
+      "aliases": [
+        "경남/거제"
+      ]
+    },
+    {
+      "province_name": "경상남도",
+      "municipality_name": "거창군",
+      "org": "6480000",
+      "sborg": "5470000",
+      "aliases": [
+        "경남/거창"
+      ]
+    },
+    {
+      "province_name": "경상남도",
+      "municipality_name": "고성군",
+      "org": "6480000",
+      "sborg": "5420000",
+      "aliases": [
+        "경남/고성"
+      ]
+    },
+    {
+      "province_name": "경상남도",
+      "municipality_name": "김해시",
+      "org": "6480000",
+      "sborg": "5350000",
+      "aliases": [
+        "경남/김해"
+      ]
+    },
+    {
+      "province_name": "경상남도",
+      "municipality_name": "남해군",
+      "org": "6480000",
+      "sborg": "5430000",
+      "aliases": [
+        "경남/남해"
+      ]
+    },
+    {
+      "province_name": "경상남도",
+      "municipality_name": "밀양시",
+      "org": "6480000",
+      "sborg": "5360000",
+      "aliases": [
+        "경남/밀양"
+      ]
+    },
+    {
+      "province_name": "경상남도",
+      "municipality_name": "사천시",
+      "org": "6480000",
+      "sborg": "5340000",
+      "aliases": [
+        "경남/사천"
+      ]
+    },
+    {
+      "province_name": "경상남도",
+      "municipality_name": "산청군",
+      "org": "6480000",
+      "sborg": "5450000",
+      "aliases": [
+        "경남/산청"
+      ]
+    },
+    {
+      "province_name": "경상남도",
+      "municipality_name": "양산시",
+      "org": "6480000",
+      "sborg": "5380000",
+      "aliases": [
+        "경남/양산"
+      ]
+    },
+    {
+      "province_name": "경상남도",
+      "municipality_name": "의령군",
+      "org": "6480000",
+      "sborg": "5390000",
+      "aliases": [
+        "경남/의령"
+      ]
+    },
+    {
+      "province_name": "경상남도",
+      "municipality_name": "진주시",
+      "org": "6480000",
+      "sborg": "5310000",
+      "aliases": [
+        "경남/진주"
+      ]
+    },
+    {
+      "province_name": "경상남도",
+      "municipality_name": "창녕군",
+      "org": "6480000",
+      "sborg": "5410000",
+      "aliases": [
+        "경남/창녕"
+      ]
+    },
+    {
+      "province_name": "경상남도",
+      "municipality_name": "창원시",
+      "org": "6480000",
+      "sborg": "5670000",
+      "aliases": [
+        "경남/창원"
+      ]
+    },
+    {
+      "province_name": "경상남도",
+      "municipality_name": "통영시",
+      "org": "6480000",
+      "sborg": "5330000",
+      "aliases": [
+        "경남/통영"
+      ]
+    },
+    {
+      "province_name": "경상남도",
+      "municipality_name": "하동군",
+      "org": "6480000",
+      "sborg": "5440000",
+      "aliases": [
+        "경남/하동"
+      ]
+    },
+    {
+      "province_name": "경상남도",
+      "municipality_name": "함안군",
+      "org": "6480000",
+      "sborg": "5400000",
+      "aliases": [
+        "경남/함안"
+      ]
+    },
+    {
+      "province_name": "경상남도",
+      "municipality_name": "함양군",
+      "org": "6480000",
+      "sborg": "5460000",
+      "aliases": [
+        "경남/함양"
+      ]
+    },
+    {
+      "province_name": "경상남도",
+      "municipality_name": "합천군",
+      "org": "6480000",
+      "sborg": "5480000",
+      "aliases": [
+        "경남/합천"
+      ]
+    },
+    {
+      "province_name": "경상북도",
+      "municipality_name": null,
+      "org": "6470000",
+      "sborg": null,
+      "aliases": [
+        "경북"
+      ]
+    },
+    {
+      "province_name": "경상북도",
+      "municipality_name": "경산시",
+      "org": "6470000",
+      "sborg": "5130000",
+      "aliases": [
+        "경북/경산"
+      ]
+    },
+    {
+      "province_name": "경상북도",
+      "municipality_name": "경주시",
+      "org": "6470000",
+      "sborg": "5050000",
+      "aliases": [
+        "경북/경주"
+      ]
+    },
+    {
+      "province_name": "경상북도",
+      "municipality_name": "고령군",
+      "org": "6470000",
+      "sborg": "5200000",
+      "aliases": [
+        "경북/고령"
+      ]
+    },
+    {
+      "province_name": "경상북도",
+      "municipality_name": "구미시",
+      "org": "6470000",
+      "sborg": "5080000",
+      "aliases": [
+        "경북/구미"
+      ]
+    },
+    {
+      "province_name": "경상북도",
+      "municipality_name": "김천시",
+      "org": "6470000",
+      "sborg": "5060000",
+      "aliases": [
+        "경북/김천"
+      ]
+    },
+    {
+      "province_name": "경상북도",
+      "municipality_name": "문경시",
+      "org": "6470000",
+      "sborg": "5120000",
+      "aliases": [
+        "경북/문경"
+      ]
+    },
+    {
+      "province_name": "경상북도",
+      "municipality_name": "봉화군",
+      "org": "6470000",
+      "sborg": "5240000",
+      "aliases": [
+        "경북/봉화"
+      ]
+    },
+    {
+      "province_name": "경상북도",
+      "municipality_name": "상주시",
+      "org": "6470000",
+      "sborg": "5110000",
+      "aliases": [
+        "경북/상주"
+      ]
+    },
+    {
+      "province_name": "경상북도",
+      "municipality_name": "성주군",
+      "org": "6470000",
+      "sborg": "5210000",
+      "aliases": [
+        "경북/성주"
+      ]
+    },
+    {
+      "province_name": "경상북도",
+      "municipality_name": "안동시",
+      "org": "6470000",
+      "sborg": "5070000",
+      "aliases": [
+        "경북/안동"
+      ]
+    },
+    {
+      "province_name": "경상북도",
+      "municipality_name": "영덕군",
+      "org": "6470000",
+      "sborg": "5180000",
+      "aliases": [
+        "경북/영덕"
+      ]
+    },
+    {
+      "province_name": "경상북도",
+      "municipality_name": "영양군",
+      "org": "6470000",
+      "sborg": "5170000",
+      "aliases": [
+        "경북/영양"
+      ]
+    },
+    {
+      "province_name": "경상북도",
+      "municipality_name": "영주시",
+      "org": "6470000",
+      "sborg": "5090000",
+      "aliases": [
+        "경북/영주"
+      ]
+    },
+    {
+      "province_name": "경상북도",
+      "municipality_name": "영천시",
+      "org": "6470000",
+      "sborg": "5100000",
+      "aliases": [
+        "경북/영천"
+      ]
+    },
+    {
+      "province_name": "경상북도",
+      "municipality_name": "예천군",
+      "org": "6470000",
+      "sborg": "5230000",
+      "aliases": [
+        "경북/예천"
+      ]
+    },
+    {
+      "province_name": "경상북도",
+      "municipality_name": "울릉군",
+      "org": "6470000",
+      "sborg": "5260000",
+      "aliases": [
+        "경북/울릉"
+      ]
+    },
+    {
+      "province_name": "경상북도",
+      "municipality_name": "울진군",
+      "org": "6470000",
+      "sborg": "5250000",
+      "aliases": [
+        "경북/울진"
+      ]
+    },
+    {
+      "province_name": "경상북도",
+      "municipality_name": "의성군",
+      "org": "6470000",
+      "sborg": "5150000",
+      "aliases": [
+        "경북/의성"
+      ]
+    },
+    {
+      "province_name": "경상북도",
+      "municipality_name": "청도군",
+      "org": "6470000",
+      "sborg": "5190000",
+      "aliases": [
+        "경북/청도"
+      ]
+    },
+    {
+      "province_name": "경상북도",
+      "municipality_name": "청송군",
+      "org": "6470000",
+      "sborg": "5160000",
+      "aliases": [
+        "경북/청송"
+      ]
+    },
+    {
+      "province_name": "경상북도",
+      "municipality_name": "칠곡군",
+      "org": "6470000",
+      "sborg": "5220000",
+      "aliases": [
+        "경북/칠곡"
+      ]
+    },
+    {
+      "province_name": "경상북도",
+      "municipality_name": "포항시",
+      "org": "6470000",
+      "sborg": "5020000",
+      "aliases": [
+        "경북/포항"
+      ]
+    },
+    {
+      "province_name": "광주광역시",
+      "municipality_name": null,
+      "org": "6290000",
+      "sborg": null,
+      "aliases": [
+        "광주"
+      ]
+    },
+    {
+      "province_name": "광주광역시",
+      "municipality_name": "광산구",
+      "org": "6290000",
+      "sborg": "3630000",
+      "aliases": [
+        "광주/광산"
+      ]
+    },
+    {
+      "province_name": "광주광역시",
+      "municipality_name": "남구",
+      "org": "6290000",
+      "sborg": "3610000",
+      "aliases": [
+        "광주/남"
+      ]
+    },
+    {
+      "province_name": "광주광역시",
+      "municipality_name": "동구",
+      "org": "6290000",
+      "sborg": "3590000",
+      "aliases": [
+        "광주/동"
+      ]
+    },
+    {
+      "province_name": "광주광역시",
+      "municipality_name": "북구",
+      "org": "6290000",
+      "sborg": "3620000",
+      "aliases": [
+        "광주/북"
+      ]
+    },
+    {
+      "province_name": "광주광역시",
+      "municipality_name": "서구",
+      "org": "6290000",
+      "sborg": "3600000",
+      "aliases": [
+        "광주/서"
+      ]
+    },
+    {
+      "province_name": "대구광역시",
+      "municipality_name": null,
+      "org": "6270000",
+      "sborg": null,
+      "aliases": [
+        "대구"
+      ]
+    },
+    {
+      "province_name": "대구광역시",
+      "municipality_name": "군위군",
+      "org": "6270000",
+      "sborg": "5141000",
+      "aliases": [
+        "대구/군위"
+      ]
+    },
+    {
+      "province_name": "대구광역시",
+      "municipality_name": "남구",
+      "org": "6270000",
+      "sborg": "3440000",
+      "aliases": [
+        "대구/남"
+      ]
+    },
+    {
+      "province_name": "대구광역시",
+      "municipality_name": "달서구",
+      "org": "6270000",
+      "sborg": "3470000",
+      "aliases": [
+        "대구/달서"
+      ]
+    },
+    {
+      "province_name": "대구광역시",
+      "municipality_name": "달성군",
+      "org": "6270000",
+      "sborg": "3480000",
+      "aliases": [
+        "대구/달성"
+      ]
+    },
+    {
+      "province_name": "대구광역시",
+      "municipality_name": "동구",
+      "org": "6270000",
+      "sborg": "3420000",
+      "aliases": [
+        "대구/동"
+      ]
+    },
+    {
+      "province_name": "대구광역시",
+      "municipality_name": "북구",
+      "org": "6270000",
+      "sborg": "3450000",
+      "aliases": [
+        "대구/북"
+      ]
+    },
+    {
+      "province_name": "대구광역시",
+      "municipality_name": "서구",
+      "org": "6270000",
+      "sborg": "3430000",
+      "aliases": [
+        "대구/서"
+      ]
+    },
+    {
+      "province_name": "대구광역시",
+      "municipality_name": "수성구",
+      "org": "6270000",
+      "sborg": "3460000",
+      "aliases": [
+        "대구/수성"
+      ]
+    },
+    {
+      "province_name": "대구광역시",
+      "municipality_name": "중구",
+      "org": "6270000",
+      "sborg": "3410000",
+      "aliases": [
+        "대구/중"
+      ]
+    },
+    {
+      "province_name": "대전광역시",
+      "municipality_name": null,
+      "org": "6300000",
+      "sborg": null,
+      "aliases": [
+        "대전"
+      ]
+    },
+    {
+      "province_name": "대전광역시",
+      "municipality_name": "대덕구",
+      "org": "6300000",
+      "sborg": "3680000",
+      "aliases": [
+        "대전/대덕"
+      ]
+    },
+    {
+      "province_name": "대전광역시",
+      "municipality_name": "동구",
+      "org": "6300000",
+      "sborg": "3640000",
+      "aliases": [
+        "대전/동"
+      ]
+    },
+    {
+      "province_name": "대전광역시",
+      "municipality_name": "서구",
+      "org": "6300000",
+      "sborg": "3660000",
+      "aliases": [
+        "대전/서"
+      ]
+    },
+    {
+      "province_name": "대전광역시",
+      "municipality_name": "유성구",
+      "org": "6300000",
+      "sborg": "3670000",
+      "aliases": [
+        "대전/유성"
+      ]
+    },
+    {
+      "province_name": "대전광역시",
+      "municipality_name": "중구",
+      "org": "6300000",
+      "sborg": "3650000",
+      "aliases": [
+        "대전/중"
+      ]
+    },
+    {
+      "province_name": "부산광역시",
+      "municipality_name": null,
+      "org": "6260000",
+      "sborg": null,
+      "aliases": [
+        "부산"
+      ]
+    },
+    {
+      "province_name": "부산광역시",
+      "municipality_name": "강서구",
+      "org": "6260000",
+      "sborg": "3360000",
+      "aliases": [
+        "부산/강서"
+      ]
+    },
+    {
+      "province_name": "부산광역시",
+      "municipality_name": "금정구",
+      "org": "6260000",
+      "sborg": "3350000",
+      "aliases": [
+        "부산/금정"
+      ]
+    },
+    {
+      "province_name": "부산광역시",
+      "municipality_name": "기장군",
+      "org": "6260000",
+      "sborg": "3400000",
+      "aliases": [
+        "부산/기장"
+      ]
+    },
+    {
+      "province_name": "부산광역시",
+      "municipality_name": "남구",
+      "org": "6260000",
+      "sborg": "3310000",
+      "aliases": [
+        "부산/남"
+      ]
+    },
+    {
+      "province_name": "부산광역시",
+      "municipality_name": "동구",
+      "org": "6260000",
+      "sborg": "3270000",
+      "aliases": [
+        "부산/동"
+      ]
+    },
+    {
+      "province_name": "부산광역시",
+      "municipality_name": "동래구",
+      "org": "6260000",
+      "sborg": "3300000",
+      "aliases": [
+        "부산/동래"
+      ]
+    },
+    {
+      "province_name": "부산광역시",
+      "municipality_name": "부산진구",
+      "org": "6260000",
+      "sborg": "3290000",
+      "aliases": [
+        "부산/부산진"
+      ]
+    },
+    {
+      "province_name": "부산광역시",
+      "municipality_name": "북구",
+      "org": "6260000",
+      "sborg": "3320000",
+      "aliases": [
+        "부산/북"
+      ]
+    },
+    {
+      "province_name": "부산광역시",
+      "municipality_name": "사상구",
+      "org": "6260000",
+      "sborg": "3390000",
+      "aliases": [
+        "부산/사상"
+      ]
+    },
+    {
+      "province_name": "부산광역시",
+      "municipality_name": "사하구",
+      "org": "6260000",
+      "sborg": "3340000",
+      "aliases": [
+        "부산/사하"
+      ]
+    },
+    {
+      "province_name": "부산광역시",
+      "municipality_name": "서구",
+      "org": "6260000",
+      "sborg": "3260000",
+      "aliases": [
+        "부산/서"
+      ]
+    },
+    {
+      "province_name": "부산광역시",
+      "municipality_name": "수영구",
+      "org": "6260000",
+      "sborg": "3380000",
+      "aliases": [
+        "부산/수영"
+      ]
+    },
+    {
+      "province_name": "부산광역시",
+      "municipality_name": "연제구",
+      "org": "6260000",
+      "sborg": "3370000",
+      "aliases": [
+        "부산/연제"
+      ]
+    },
+    {
+      "province_name": "부산광역시",
+      "municipality_name": "영도구",
+      "org": "6260000",
+      "sborg": "3280000",
+      "aliases": [
+        "부산/영도"
+      ]
+    },
+    {
+      "province_name": "부산광역시",
+      "municipality_name": "중구",
+      "org": "6260000",
+      "sborg": "3250000",
+      "aliases": [
+        "부산/중"
+      ]
+    },
+    {
+      "province_name": "부산광역시",
+      "municipality_name": "해운대구",
+      "org": "6260000",
+      "sborg": "3330000",
+      "aliases": [
+        "부산/해운대"
+      ]
+    },
+    {
+      "province_name": "서울특별시",
+      "municipality_name": null,
+      "org": "6110000",
+      "sborg": null,
+      "aliases": [
+        "서울"
+      ]
+    },
+    {
+      "province_name": "서울특별시",
+      "municipality_name": "강남구",
+      "org": "6110000",
+      "sborg": "3220000",
+      "aliases": [
+        "서울/강남"
+      ]
+    },
+    {
+      "province_name": "서울특별시",
+      "municipality_name": "강동구",
+      "org": "6110000",
+      "sborg": "3240000",
+      "aliases": [
+        "서울/강동"
+      ]
+    },
+    {
+      "province_name": "서울특별시",
+      "municipality_name": "강북구",
+      "org": "6110000",
+      "sborg": "3080000",
+      "aliases": [
+        "서울/강북"
+      ]
+    },
+    {
+      "province_name": "서울특별시",
+      "municipality_name": "강서구",
+      "org": "6110000",
+      "sborg": "3150000",
+      "aliases": [
+        "서울/강서"
+      ]
+    },
+    {
+      "province_name": "서울특별시",
+      "municipality_name": "관악구",
+      "org": "6110000",
+      "sborg": "3200000",
+      "aliases": [
+        "서울/관악"
+      ]
+    },
+    {
+      "province_name": "서울특별시",
+      "municipality_name": "광진구",
+      "org": "6110000",
+      "sborg": "3040000",
+      "aliases": [
+        "서울/광진"
+      ]
+    },
+    {
+      "province_name": "서울특별시",
+      "municipality_name": "구로구",
+      "org": "6110000",
+      "sborg": "3160000",
+      "aliases": [
+        "서울/구로"
+      ]
+    },
+    {
+      "province_name": "서울특별시",
+      "municipality_name": "금천구",
+      "org": "6110000",
+      "sborg": "3170000",
+      "aliases": [
+        "서울/금천"
+      ]
+    },
+    {
+      "province_name": "서울특별시",
+      "municipality_name": "노원구",
+      "org": "6110000",
+      "sborg": "3100000",
+      "aliases": [
+        "서울/노원"
+      ]
+    },
+    {
+      "province_name": "서울특별시",
+      "municipality_name": "도봉구",
+      "org": "6110000",
+      "sborg": "3090000",
+      "aliases": [
+        "서울/도봉"
+      ]
+    },
+    {
+      "province_name": "서울특별시",
+      "municipality_name": "동대문구",
+      "org": "6110000",
+      "sborg": "3050000",
+      "aliases": [
+        "서울/동대문"
+      ]
+    },
+    {
+      "province_name": "서울특별시",
+      "municipality_name": "동작구",
+      "org": "6110000",
+      "sborg": "3190000",
+      "aliases": [
+        "서울/동작"
+      ]
+    },
+    {
+      "province_name": "서울특별시",
+      "municipality_name": "마포구",
+      "org": "6110000",
+      "sborg": "3130000",
+      "aliases": [
+        "서울/마포"
+      ]
+    },
+    {
+      "province_name": "서울특별시",
+      "municipality_name": "서대문구",
+      "org": "6110000",
+      "sborg": "3120000",
+      "aliases": [
+        "서울/서대문"
+      ]
+    },
+    {
+      "province_name": "서울특별시",
+      "municipality_name": "서초구",
+      "org": "6110000",
+      "sborg": "3210000",
+      "aliases": [
+        "서울/서초"
+      ]
+    },
+    {
+      "province_name": "서울특별시",
+      "municipality_name": "성동구",
+      "org": "6110000",
+      "sborg": "3030000",
+      "aliases": [
+        "서울/성동"
+      ]
+    },
+    {
+      "province_name": "서울특별시",
+      "municipality_name": "성북구",
+      "org": "6110000",
+      "sborg": "3070000",
+      "aliases": [
+        "서울/성북"
+      ]
+    },
+    {
+      "province_name": "서울특별시",
+      "municipality_name": "송파구",
+      "org": "6110000",
+      "sborg": "3230000",
+      "aliases": [
+        "서울/송파"
+      ]
+    },
+    {
+      "province_name": "서울특별시",
+      "municipality_name": "양천구",
+      "org": "6110000",
+      "sborg": "3140000",
+      "aliases": [
+        "서울/양천"
+      ]
+    },
+    {
+      "province_name": "서울특별시",
+      "municipality_name": "영등포구",
+      "org": "6110000",
+      "sborg": "3180000",
+      "aliases": [
+        "서울/영등포"
+      ]
+    },
+    {
+      "province_name": "서울특별시",
+      "municipality_name": "용산구",
+      "org": "6110000",
+      "sborg": "3020000",
+      "aliases": [
+        "서울/용산"
+      ]
+    },
+    {
+      "province_name": "서울특별시",
+      "municipality_name": "은평구",
+      "org": "6110000",
+      "sborg": "3110000",
+      "aliases": [
+        "서울/은평"
+      ]
+    },
+    {
+      "province_name": "서울특별시",
+      "municipality_name": "종로구",
+      "org": "6110000",
+      "sborg": "3000000",
+      "aliases": [
+        "서울/종로"
+      ]
+    },
+    {
+      "province_name": "서울특별시",
+      "municipality_name": "중구",
+      "org": "6110000",
+      "sborg": "3010000",
+      "aliases": [
+        "서울/중"
+      ]
+    },
+    {
+      "province_name": "서울특별시",
+      "municipality_name": "중랑구",
+      "org": "6110000",
+      "sborg": "3060000",
+      "aliases": [
+        "서울/중랑"
+      ]
+    },
+    {
+      "province_name": "세종특별자치시",
+      "municipality_name": null,
+      "org": "5690000",
+      "sborg": null,
+      "aliases": [
+        "세종"
+      ]
+    },
+    {
+      "province_name": "울산광역시",
+      "municipality_name": null,
+      "org": "6310000",
+      "sborg": null,
+      "aliases": [
+        "울산"
+      ]
+    },
+    {
+      "province_name": "울산광역시",
+      "municipality_name": "남구",
+      "org": "6310000",
+      "sborg": "3700000",
+      "aliases": [
+        "울산/남"
+      ]
+    },
+    {
+      "province_name": "울산광역시",
+      "municipality_name": "동구",
+      "org": "6310000",
+      "sborg": "3710000",
+      "aliases": [
+        "울산/동"
+      ]
+    },
+    {
+      "province_name": "울산광역시",
+      "municipality_name": "북구",
+      "org": "6310000",
+      "sborg": "3720000",
+      "aliases": [
+        "울산/북"
+      ]
+    },
+    {
+      "province_name": "울산광역시",
+      "municipality_name": "울주군",
+      "org": "6310000",
+      "sborg": "3730000",
+      "aliases": [
+        "울산/울주"
+      ]
+    },
+    {
+      "province_name": "울산광역시",
+      "municipality_name": "중구",
+      "org": "6310000",
+      "sborg": "3690000",
+      "aliases": [
+        "울산/중"
+      ]
+    },
+    {
+      "province_name": "인천광역시",
+      "municipality_name": null,
+      "org": "6280000",
+      "sborg": null,
+      "aliases": [
+        "인천"
+      ]
+    },
+    {
+      "province_name": "인천광역시",
+      "municipality_name": "강화군",
+      "org": "6280000",
+      "sborg": "3570000",
+      "aliases": [
+        "인천/강화"
+      ]
+    },
+    {
+      "province_name": "인천광역시",
+      "municipality_name": "계양구",
+      "org": "6280000",
+      "sborg": "3550000",
+      "aliases": [
+        "인천/계양"
+      ]
+    },
+    {
+      "province_name": "인천광역시",
+      "municipality_name": "남동구",
+      "org": "6280000",
+      "sborg": "3530000",
+      "aliases": [
+        "인천/남동"
+      ]
+    },
+    {
+      "province_name": "인천광역시",
+      "municipality_name": "동구",
+      "org": "6280000",
+      "sborg": "3500000",
+      "aliases": [
+        "인천/동"
+      ]
+    },
+    {
+      "province_name": "인천광역시",
+      "municipality_name": "미추홀구",
+      "org": "6280000",
+      "sborg": "3510500",
+      "aliases": [
+        "인천/미추홀"
+      ]
+    },
+    {
+      "province_name": "인천광역시",
+      "municipality_name": "부평구",
+      "org": "6280000",
+      "sborg": "3540000",
+      "aliases": [
+        "인천/부평"
+      ]
+    },
+    {
+      "province_name": "인천광역시",
+      "municipality_name": "서구",
+      "org": "6280000",
+      "sborg": "3560000",
+      "aliases": [
+        "인천/서"
+      ]
+    },
+    {
+      "province_name": "인천광역시",
+      "municipality_name": "연수구",
+      "org": "6280000",
+      "sborg": "3520000",
+      "aliases": [
+        "인천/연수"
+      ]
+    },
+    {
+      "province_name": "인천광역시",
+      "municipality_name": "옹진군",
+      "org": "6280000",
+      "sborg": "3580000",
+      "aliases": [
+        "인천/옹진"
+      ]
+    },
+    {
+      "province_name": "인천광역시",
+      "municipality_name": "중구",
+      "org": "6280000",
+      "sborg": "3490000",
+      "aliases": [
+        "인천/중"
+      ]
+    },
+    {
+      "province_name": "전라남도",
+      "municipality_name": null,
+      "org": "6460000",
+      "sborg": null,
+      "aliases": [
+        "전남"
+      ]
+    },
+    {
+      "province_name": "전라남도",
+      "municipality_name": "강진군",
+      "org": "6460000",
+      "sborg": "4920000",
+      "aliases": [
+        "전남/강진"
+      ]
+    },
+    {
+      "province_name": "전라남도",
+      "municipality_name": "고흥군",
+      "org": "6460000",
+      "sborg": "4880000",
+      "aliases": [
+        "전남/고흥"
+      ]
+    },
+    {
+      "province_name": "전라남도",
+      "municipality_name": "곡성군",
+      "org": "6460000",
+      "sborg": "4860000",
+      "aliases": [
+        "전남/곡성"
+      ]
+    },
+    {
+      "province_name": "전라남도",
+      "municipality_name": "광양시",
+      "org": "6460000",
+      "sborg": "4840000",
+      "aliases": [
+        "전남/광양"
+      ]
+    },
+    {
+      "province_name": "전라남도",
+      "municipality_name": "구례군",
+      "org": "6460000",
+      "sborg": "4870000",
+      "aliases": [
+        "전남/구례"
+      ]
+    },
+    {
+      "province_name": "전라남도",
+      "municipality_name": "나주시",
+      "org": "6460000",
+      "sborg": "4830000",
+      "aliases": [
+        "전남/나주"
+      ]
+    },
+    {
+      "province_name": "전라남도",
+      "municipality_name": "담양군",
+      "org": "6460000",
+      "sborg": "4850000",
+      "aliases": [
+        "전남/담양"
+      ]
+    },
+    {
+      "province_name": "전라남도",
+      "municipality_name": "목포시",
+      "org": "6460000",
+      "sborg": "4800000",
+      "aliases": [
+        "전남/목포"
+      ]
+    },
+    {
+      "province_name": "전라남도",
+      "municipality_name": "무안군",
+      "org": "6460000",
+      "sborg": "4950000",
+      "aliases": [
+        "전남/무안"
+      ]
+    },
+    {
+      "province_name": "전라남도",
+      "municipality_name": "보성군",
+      "org": "6460000",
+      "sborg": "4890000",
+      "aliases": [
+        "전남/보성"
+      ]
+    },
+    {
+      "province_name": "전라남도",
+      "municipality_name": "순천시",
+      "org": "6460000",
+      "sborg": "4820000",
+      "aliases": [
+        "전남/순천"
+      ]
+    },
+    {
+      "province_name": "전라남도",
+      "municipality_name": "신안군",
+      "org": "6460000",
+      "sborg": "5010000",
+      "aliases": [
+        "전남/신안"
+      ]
+    },
+    {
+      "province_name": "전라남도",
+      "municipality_name": "여수시",
+      "org": "6460000",
+      "sborg": "4810000",
+      "aliases": [
+        "전남/여수"
+      ]
+    },
+    {
+      "province_name": "전라남도",
+      "municipality_name": "영광군",
+      "org": "6460000",
+      "sborg": "4970000",
+      "aliases": [
+        "전남/영광"
+      ]
+    },
+    {
+      "province_name": "전라남도",
+      "municipality_name": "영암군",
+      "org": "6460000",
+      "sborg": "4940000",
+      "aliases": [
+        "전남/영암"
+      ]
+    },
+    {
+      "province_name": "전라남도",
+      "municipality_name": "완도군",
+      "org": "6460000",
+      "sborg": "4990000",
+      "aliases": [
+        "전남/완도"
+      ]
+    },
+    {
+      "province_name": "전라남도",
+      "municipality_name": "장성군",
+      "org": "6460000",
+      "sborg": "4980000",
+      "aliases": [
+        "전남/장성"
+      ]
+    },
+    {
+      "province_name": "전라남도",
+      "municipality_name": "장흥군",
+      "org": "6460000",
+      "sborg": "4910000",
+      "aliases": [
+        "전남/장흥"
+      ]
+    },
+    {
+      "province_name": "전라남도",
+      "municipality_name": "진도군",
+      "org": "6460000",
+      "sborg": "5000000",
+      "aliases": [
+        "전남/진도"
+      ]
+    },
+    {
+      "province_name": "전라남도",
+      "municipality_name": "함평군",
+      "org": "6460000",
+      "sborg": "4960000",
+      "aliases": [
+        "전남/함평"
+      ]
+    },
+    {
+      "province_name": "전라남도",
+      "municipality_name": "해남군",
+      "org": "6460000",
+      "sborg": "4930000",
+      "aliases": [
+        "전남/해남"
+      ]
+    },
+    {
+      "province_name": "전라남도",
+      "municipality_name": "화순군",
+      "org": "6460000",
+      "sborg": "4900000",
+      "aliases": [
+        "전남/화순"
+      ]
+    },
+    {
+      "province_name": "전북특별자치도",
+      "municipality_name": null,
+      "org": "6540000",
+      "sborg": null,
+      "aliases": [
+        "전북"
+      ]
+    },
+    {
+      "province_name": "전북특별자치도",
+      "municipality_name": "고창군",
+      "org": "6540000",
+      "sborg": "4781000",
+      "aliases": [
+        "전북/고창"
+      ]
+    },
+    {
+      "province_name": "전북특별자치도",
+      "municipality_name": "군산시",
+      "org": "6540000",
+      "sborg": "4671000",
+      "aliases": [
+        "전북/군산"
+      ]
+    },
+    {
+      "province_name": "전북특별자치도",
+      "municipality_name": "김제시",
+      "org": "6540000",
+      "sborg": "4711000",
+      "aliases": [
+        "전북/김제"
+      ]
+    },
+    {
+      "province_name": "전북특별자치도",
+      "municipality_name": "남원시",
+      "org": "6540000",
+      "sborg": "4701000",
+      "aliases": [
+        "전북/남원"
+      ]
+    },
+    {
+      "province_name": "전북특별자치도",
+      "municipality_name": "무주군",
+      "org": "6540000",
+      "sborg": "4741000",
+      "aliases": [
+        "전북/무주"
+      ]
+    },
+    {
+      "province_name": "전북특별자치도",
+      "municipality_name": "부안군",
+      "org": "6540000",
+      "sborg": "4791000",
+      "aliases": [
+        "전북/부안"
+      ]
+    },
+    {
+      "province_name": "전북특별자치도",
+      "municipality_name": "순창군",
+      "org": "6540000",
+      "sborg": "4771000",
+      "aliases": [
+        "전북/순창"
+      ]
+    },
+    {
+      "province_name": "전북특별자치도",
+      "municipality_name": "완주군",
+      "org": "6540000",
+      "sborg": "4721000",
+      "aliases": [
+        "전북/완주"
+      ]
+    },
+    {
+      "province_name": "전북특별자치도",
+      "municipality_name": "익산시",
+      "org": "6540000",
+      "sborg": "4681000",
+      "aliases": [
+        "전북/익산"
+      ]
+    },
+    {
+      "province_name": "전북특별자치도",
+      "municipality_name": "임실군",
+      "org": "6540000",
+      "sborg": "4761000",
+      "aliases": [
+        "전북/임실"
+      ]
+    },
+    {
+      "province_name": "전북특별자치도",
+      "municipality_name": "장수군",
+      "org": "6540000",
+      "sborg": "4751000",
+      "aliases": [
+        "전북/장수"
+      ]
+    },
+    {
+      "province_name": "전북특별자치도",
+      "municipality_name": "전주시",
+      "org": "6540000",
+      "sborg": "4641000",
+      "aliases": [
+        "전북/전주"
+      ]
+    },
+    {
+      "province_name": "전북특별자치도",
+      "municipality_name": "정읍시",
+      "org": "6540000",
+      "sborg": "4691000",
+      "aliases": [
+        "전북/정읍"
+      ]
+    },
+    {
+      "province_name": "전북특별자치도",
+      "municipality_name": "진안군",
+      "org": "6540000",
+      "sborg": "4731000",
+      "aliases": [
+        "전북/진안"
+      ]
+    },
+    {
+      "province_name": "제주특별자치도",
+      "municipality_name": null,
+      "org": "6500000",
+      "sborg": null,
+      "aliases": [
+        "제주"
+      ]
+    },
+    {
+      "province_name": "제주특별자치도",
+      "municipality_name": "서귀포시",
+      "org": "6500000",
+      "sborg": "6520000",
+      "aliases": [
+        "제주/서귀포"
+      ]
+    },
+    {
+      "province_name": "제주특별자치도",
+      "municipality_name": "제주시",
+      "org": "6500000",
+      "sborg": "6510000",
+      "aliases": [
+        "제주/제주"
+      ]
+    },
+    {
+      "province_name": "충청남도",
+      "municipality_name": null,
+      "org": "6440000",
+      "sborg": null,
+      "aliases": [
+        "충남"
+      ]
+    },
+    {
+      "province_name": "충청남도",
+      "municipality_name": "계룡시",
+      "org": "6440000",
+      "sborg": "5580000",
+      "aliases": [
+        "충남/계룡"
+      ]
+    },
+    {
+      "province_name": "충청남도",
+      "municipality_name": "공주시",
+      "org": "6440000",
+      "sborg": "4500000",
+      "aliases": [
+        "충남/공주"
+      ]
+    },
+    {
+      "province_name": "충청남도",
+      "municipality_name": "금산군",
+      "org": "6440000",
+      "sborg": "4550000",
+      "aliases": [
+        "충남/금산"
+      ]
+    },
+    {
+      "province_name": "충청남도",
+      "municipality_name": "논산시",
+      "org": "6440000",
+      "sborg": "4540000",
+      "aliases": [
+        "충남/논산"
+      ]
+    },
+    {
+      "province_name": "충청남도",
+      "municipality_name": "당진시",
+      "org": "6440000",
+      "sborg": "5680000",
+      "aliases": [
+        "충남/당진"
+      ]
+    },
+    {
+      "province_name": "충청남도",
+      "municipality_name": "보령시",
+      "org": "6440000",
+      "sborg": "4510000",
+      "aliases": [
+        "충남/보령"
+      ]
+    },
+    {
+      "province_name": "충청남도",
+      "municipality_name": "부여군",
+      "org": "6440000",
+      "sborg": "4570000",
+      "aliases": [
+        "충남/부여"
+      ]
+    },
+    {
+      "province_name": "충청남도",
+      "municipality_name": "서산시",
+      "org": "6440000",
+      "sborg": "4530000",
+      "aliases": [
+        "충남/서산"
+      ]
+    },
+    {
+      "province_name": "충청남도",
+      "municipality_name": "서천군",
+      "org": "6440000",
+      "sborg": "4580000",
+      "aliases": [
+        "충남/서천"
+      ]
+    },
+    {
+      "province_name": "충청남도",
+      "municipality_name": "아산시",
+      "org": "6440000",
+      "sborg": "4520000",
+      "aliases": [
+        "충남/아산"
+      ]
+    },
+    {
+      "province_name": "충청남도",
+      "municipality_name": "예산군",
+      "org": "6440000",
+      "sborg": "4610000",
+      "aliases": [
+        "충남/예산"
+      ]
+    },
+    {
+      "province_name": "충청남도",
+      "municipality_name": "천안시",
+      "org": "6440000",
+      "sborg": "4490000",
+      "aliases": [
+        "충남/천안"
+      ]
+    },
+    {
+      "province_name": "충청남도",
+      "municipality_name": "청양군",
+      "org": "6440000",
+      "sborg": "4590000",
+      "aliases": [
+        "충남/청양"
+      ]
+    },
+    {
+      "province_name": "충청남도",
+      "municipality_name": "태안군",
+      "org": "6440000",
+      "sborg": "4620000",
+      "aliases": [
+        "충남/태안"
+      ]
+    },
+    {
+      "province_name": "충청남도",
+      "municipality_name": "홍성군",
+      "org": "6440000",
+      "sborg": "4600000",
+      "aliases": [
+        "충남/홍성"
+      ]
+    },
+    {
+      "province_name": "충청북도",
+      "municipality_name": null,
+      "org": "6430000",
+      "sborg": null,
+      "aliases": [
+        "충북"
+      ]
+    },
+    {
+      "province_name": "충청북도",
+      "municipality_name": "괴산군",
+      "org": "6430000",
+      "sborg": "4460000",
+      "aliases": [
+        "충북/괴산"
+      ]
+    },
+    {
+      "province_name": "충청북도",
+      "municipality_name": "단양군",
+      "org": "6430000",
+      "sborg": "4480000",
+      "aliases": [
+        "충북/단양"
+      ]
+    },
+    {
+      "province_name": "충청북도",
+      "municipality_name": "보은군",
+      "org": "6430000",
+      "sborg": "4420000",
+      "aliases": [
+        "충북/보은"
+      ]
+    },
+    {
+      "province_name": "충청북도",
+      "municipality_name": "영동군",
+      "org": "6430000",
+      "sborg": "4440000",
+      "aliases": [
+        "충북/영동"
+      ]
+    },
+    {
+      "province_name": "충청북도",
+      "municipality_name": "옥천군",
+      "org": "6430000",
+      "sborg": "4430000",
+      "aliases": [
+        "충북/옥천"
+      ]
+    },
+    {
+      "province_name": "충청북도",
+      "municipality_name": "음성군",
+      "org": "6430000",
+      "sborg": "4470000",
+      "aliases": [
+        "충북/음성"
+      ]
+    },
+    {
+      "province_name": "충청북도",
+      "municipality_name": "제천시",
+      "org": "6430000",
+      "sborg": "4400000",
+      "aliases": [
+        "충북/제천"
+      ]
+    },
+    {
+      "province_name": "충청북도",
+      "municipality_name": "증평군",
+      "org": "6430000",
+      "sborg": "5570000",
+      "aliases": [
+        "충북/증평"
+      ]
+    },
+    {
+      "province_name": "충청북도",
+      "municipality_name": "진천군",
+      "org": "6430000",
+      "sborg": "4450000",
+      "aliases": [
+        "충북/진천"
+      ]
+    },
+    {
+      "province_name": "충청북도",
+      "municipality_name": "청주시",
+      "org": "6430000",
+      "sborg": "5710000",
+      "aliases": [
+        "충북/청주"
+      ]
+    },
+    {
+      "province_name": "충청북도",
+      "municipality_name": "충주시",
+      "org": "6430000",
+      "sborg": "4390000",
+      "aliases": [
+        "충북/충주"
+      ]
+    }
+  ]
+}
