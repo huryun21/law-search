@@ -1,0 +1,1 @@
+"""Korean law search application."""

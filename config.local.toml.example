@@ -1,0 +1,2 @@
+api_key_file = "G:\\path\\to\\external-law-api-key.txt"
+cache_path = "data/cache.db"
