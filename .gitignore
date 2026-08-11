@@ -1,5 +1,6 @@
 .worktrees/
 .venv/
+.test-deps/
 config.local.toml
 data/*.db*
 .pytest_cache/
