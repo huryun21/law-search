@@ -91,6 +91,16 @@ class SearchResponse:
     source_fetched_at: Mapping[str, datetime]
 
     def __post_init__(self) -> None:
+        unknown_sources = self.source_fetched_at.keys() - self.source_states.keys()
+        if unknown_sources:
+            raise ValueError("source retrieval timestamp requires a source state")
+        missing_timestamps = {
+            source
+            for source, state in self.source_states.items()
+            if state is not SourceState.ERROR and source not in self.source_fetched_at
+        }
+        if missing_timestamps:
+            raise ValueError("non-error source requires a retrieval timestamp")
         if any(
             value.tzinfo is None or value.utcoffset() is None
             for value in self.source_fetched_at.values()

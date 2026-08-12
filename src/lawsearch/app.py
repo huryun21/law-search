@@ -190,8 +190,12 @@ def _empty_source_label(source_key: str, region: Region | None) -> str:
 
 def _status_message(state: SourceState, fetched_at: datetime | None) -> str:
     if state is SourceState.STALE_FALLBACK:
-        timestamp = _format_timestamp(fetched_at) if fetched_at else "시각 미상"
-        return f"공식 API 오류로 이전 결과를 표시합니다. 조회 시각: {timestamp}"
+        if fetched_at is None:
+            raise ValueError("stale fallback requires a retrieval timestamp")
+        return (
+            "공식 API 오류로 이전 결과를 표시합니다. "
+            f"조회 시각: {_format_timestamp(fetched_at)}"
+        )
     return _STATE_MESSAGES[state]
 
 
