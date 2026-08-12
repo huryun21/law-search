@@ -19,7 +19,22 @@ class LawApiClient:
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._api_key = api_key
-        self._transport = transport
+        self._client = httpx.AsyncClient(
+            base_url=self._BASE_URL,
+            transport=transport,
+            timeout=10.0,
+            follow_redirects=False,
+        )
+
+    async def __aenter__(self) -> "LawApiClient":
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
+        await self.aclose()
+
+    async def aclose(self) -> None:
+        if not self._client.is_closed:
+            await self._client.aclose()
 
     async def _request_json(
         self,
@@ -28,18 +43,16 @@ class LawApiClient:
         params: Mapping[str, str],
     ) -> dict[str, Any]:
         request_params = {"OC": self._api_key, **params}
+        error: ApiError | None = None
         try:
-            async with httpx.AsyncClient(
-                base_url=self._BASE_URL,
-                transport=self._transport,
-                timeout=10.0,
-                follow_redirects=False,
-            ) as client:
-                response = await client.get(path, params=request_params)
-                response.raise_for_status()
-                payload = response.json()
-        except (httpx.HTTPError, ValueError) as exc:
-            raise ApiError(f"{safe_operation} 응답을 처리할 수 없습니다.") from exc
+            response = await self._client.get(path, params=request_params)
+            response.raise_for_status()
+            payload = response.json()
+        except Exception:
+            error = ApiError(f"{safe_operation} 응답을 처리할 수 없습니다.")
+            payload = None
+        if error is not None:
+            raise error
         if not isinstance(payload, dict):
             raise ApiError(f"{safe_operation} 응답을 처리할 수 없습니다.")
         return payload
@@ -106,10 +119,11 @@ class LawApiClient:
             SourceGroup.PROVINCIAL: "ordin",
         }
         target = target_by_source[result.source]
+        identifier = "LID" if result.source is SourceGroup.ADMIN_RULE else "ID"
         return await self._request_json(
             "lawService.do",
             "본문 조회",
-            {"target": target, "type": "JSON", "ID": result.uid},
+            {"target": target, "type": "JSON", identifier: result.uid},
         )
 
     @staticmethod
