@@ -47,4 +47,12 @@ def load_api_key(path: Path) -> str:
     value = path.read_text(encoding="utf-8-sig").strip()
     if not value:
         raise ConfigError("API 인증정보 파일이 비어 있습니다.")
+    lines = value.splitlines()
+    if len(lines) > 1:
+        target = "7. 국가법령정보 공동활용"
+        for line in lines:
+            label, separator, field_value = line.partition(":")
+            if separator and label.strip() == target and field_value.strip():
+                return field_value.strip()
+        raise ConfigError("API 인증정보 파일에 국가법령정보 공동활용 항목이 없습니다.")
     return value

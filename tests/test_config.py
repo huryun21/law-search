@@ -29,6 +29,20 @@ def test_plaintext_key_is_trimmed(tmp_path: Path):
     assert load_api_key(key_file) == "approved-key"
 
 
+def test_labeled_key_file_selects_exact_law_api_field(tmp_path: Path):
+    """Returning the whole multi-key file or a neighboring value must fail."""
+    key_file = tmp_path / "my_api_keys.txt"
+    key_file.write_text(
+        "API keys\n"
+        "6. unrelated service: wrong-value\n"
+        "7. 국가법령정보 공동활용: selected-law-value\n"
+        "8. another service: another-wrong-value\n",
+        encoding="utf-8",
+    )
+
+    assert load_api_key(key_file) == "selected-law-value"
+
+
 def test_empty_key_file_is_rejected(tmp_path: Path):
     """Removing empty-key validation must fail this test."""
     key_file = tmp_path / "key.txt"

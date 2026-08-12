@@ -5,5 +5,7 @@ config.local.toml
 data/*.db*
 .pytest_cache/
 __pycache__/
+*.egg-info/
 *.log
+task-7-report.md
 /work/

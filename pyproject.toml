@@ -19,3 +19,6 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 lawsearch = ["data/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
