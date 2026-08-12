@@ -1,5 +1,7 @@
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from threading import Barrier
 
 import pytest
 
@@ -163,3 +165,55 @@ def test_non_json_payload_does_not_leave_partial_entry(tmp_path):
         assert connection.execute(
             "SELECT COUNT(*) FROM cache_entries WHERE key = ?", ("k",)
         ).fetchone()[0] == 0
+
+
+@pytest.mark.parametrize(
+    "unsafe",
+    [
+        {
+            "request_url": (
+                "https://www.law.go.kr/DRF/lawSearch.do?target=eflaw&oC=top-secret"
+            )
+        },
+        {"response": {"CrEdEnTiAl": "top-secret"}},
+    ],
+    ids=("credential-url", "credential-field"),
+)
+def test_credential_bearing_payload_is_rejected_without_changing_database(
+    tmp_path, unsafe
+):
+    path = tmp_path / "cache.db"
+    store = CacheStore(path)
+    store.put("k", {"version": "safe"}, FETCHED)
+    secret = "top-secret"
+
+    with pytest.raises(ValueError) as caught:
+        store.put("k", unsafe, FETCHED + timedelta(hours=1))
+
+    assert str(caught.value) == "cache payload contains credential data"
+    hit = store.get("k", FETCHED + timedelta(hours=1))
+    assert hit is not None
+    assert hit.payload == {"version": "safe"}
+    database_bytes = b"".join(
+        candidate.read_bytes() for candidate in tmp_path.glob("cache.db*") if candidate.is_file()
+    )
+    assert b"OC=" not in database_bytes
+    assert secret.encode() not in database_bytes
+
+
+def test_concurrent_constructors_initialize_same_database_without_lock_errors(tmp_path):
+    path = tmp_path / "cache.db"
+    workers = 24
+    start = Barrier(workers)
+
+    def initialize(index):
+        start.wait()
+        store = CacheStore(path)
+        store.put(f"k-{index}", {"worker": index}, FETCHED)
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        list(executor.map(initialize, range(workers)))
+
+    with sqlite3.connect(path) as connection:
+        assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+        assert connection.execute("SELECT COUNT(*) FROM cache_entries").fetchone()[0] == workers
