@@ -280,15 +280,20 @@ def _intersect_token_outcomes(
         key = (item.source, item.uid)
         if key not in common:
             continue
-        contributing_states = [
-            state
+        contributors = [
+            (candidate, state)
             for results, state, _ in outcomes
-            if any((candidate.source, candidate.uid) == key for candidate in results)
+            for candidate in results
+            if (candidate.source, candidate.uid) == key
         ]
         retained.append(
             (
-                replace(item, quality=MatchQuality.ALL_TERMS),
-                _result_state(contributing_states),
+                replace(
+                    item,
+                    quality=MatchQuality.ALL_TERMS,
+                    fetched_at=min(candidate.fetched_at for candidate, _ in contributors),
+                ),
+                _result_state([state for _, state in contributors]),
             )
         )
     return tuple(retained)

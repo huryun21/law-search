@@ -311,6 +311,58 @@ def test_token_intersection_runs_only_after_both_variants_are_empty(
     ]
 
 
+@pytest.mark.parametrize(
+    ("keyword", "fresh_token", "stale_token"),
+    [
+        ("주차 단속", "주차", "단속"),
+        ("단속 주차", "주차", "단속"),
+    ],
+    ids=("fresh-contributor-first", "stale-contributor-first"),
+)
+def test_token_intersection_uses_oldest_contributor_timestamp_per_result(
+    tmp_path,
+    load_fixture,
+    keyword,
+    fresh_token,
+    stale_token,
+):
+    from conftest import FakeApi
+
+    now = datetime(2026, 8, 11, tzinfo=UTC)
+    stale_time = now - timedelta(days=2)
+    cache = CacheStore(tmp_path / f"token-times-{keyword.replace(' ', '-')}.db")
+    cache.put(
+        make_cache_key("laws", fresh_token, (), 1),
+        load_fixture("law-multiple.json"),
+        now,
+    )
+    cache.put(
+        make_cache_key("laws", stale_token, (), 1),
+        load_fixture("law-multiple.json"),
+        stale_time,
+    )
+    responses = {
+        ("laws", keyword): empty_payload("laws"),
+        ("laws", keyword.replace(" ", "")): empty_payload("laws"),
+    }
+    service = SearchService(
+        FakeApi(fail={("laws", stale_token)}, responses=responses),
+        cache,
+        lambda: now,
+    )
+
+    response = run(service.search(ParsedQuery(keyword)))
+
+    intersected = {
+        item.uid: item for item in response.results if item.quality is MatchQuality.ALL_TERMS
+    }
+    assert response.source_states["laws"] is SourceState.STALE_FALLBACK
+    assert set(intersected) == {"001498", "004743"}
+    assert {item.fetched_at for item in intersected.values()} == {stale_time}
+    assert intersected["001498"].title == "주차장법"
+    assert intersected["004743"].source is SourceGroup.DECREE
+
+
 def test_token_calls_are_skipped_when_exact_or_compact_has_a_hit(
     service_factory, parsed_plain
 ):
