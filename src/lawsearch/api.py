@@ -1,5 +1,6 @@
 from collections.abc import Mapping
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
 
@@ -55,7 +56,7 @@ class LawApiClient:
             raise error
         if not isinstance(payload, dict):
             raise ApiError(f"{safe_operation} 응답을 처리할 수 없습니다.")
-        return payload
+        return _strip_response_credentials(payload)
 
     async def search_laws(self, query: str, page: int = 1) -> dict[str, Any]:
         return await self._request_json(
@@ -149,3 +150,20 @@ class LawApiClient:
         elif isinstance(value, list):
             for item in value:
                 cls._collect_values(item, key, output)
+
+
+def _strip_response_credentials(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {key: _strip_response_credentials(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_strip_response_credentials(item) for item in value]
+    if not isinstance(value, str) or "?" not in value:
+        return value
+    parsed = urlsplit(value)
+    original_query = parse_qsl(parsed.query, keep_blank_values=True)
+    safe_query = [(key, item) for key, item in original_query if key.casefold() != "oc"]
+    if len(safe_query) == len(original_query):
+        return value
+    return urlunsplit(
+        (parsed.scheme, parsed.netloc, parsed.path, urlencode(safe_query), parsed.fragment)
+    )

@@ -52,6 +52,19 @@ def test_ordinance_has_authority_region_and_effective_date(load_fixture):
     assert result.effective_date.isoformat() == "2025-07-01"
 
 
+def test_official_ordinance_law_record_key_is_normalized(load_fixture):
+    """The live OrdinSearch response uses `law`, despite the guide fixture alias."""
+    payload = load_fixture("ordin.json")
+    wrapper = payload["OrdinSearch"]
+    wrapper["law"] = wrapper.pop("ordin")
+
+    result = normalize_results(
+        payload, SourceGroup.MUNICIPAL, MatchQuality.EXACT, FETCHED_AT
+    )[0]
+
+    assert result.uid == "2047729"
+
+
 @pytest.mark.parametrize(
     "payload",
     [

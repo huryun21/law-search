@@ -16,8 +16,8 @@ _SOURCE_SHAPES = {
     SourceGroup.MINISTERIAL_RULE: ("LawSearch", ("law", "법령")),
     SourceGroup.OTHER: ("LawSearch", ("law", "법령")),
     SourceGroup.ADMIN_RULE: ("AdmRulSearch", ("admrul", "행정규칙")),
-    SourceGroup.MUNICIPAL: ("OrdinSearch", ("ordin", "자치법규")),
-    SourceGroup.PROVINCIAL: ("OrdinSearch", ("ordin", "자치법규")),
+    SourceGroup.MUNICIPAL: ("OrdinSearch", ("law", "ordin", "자치법규")),
+    SourceGroup.PROVINCIAL: ("OrdinSearch", ("law", "ordin", "자치법규")),
 }
 
 

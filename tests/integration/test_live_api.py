@@ -92,8 +92,7 @@ async def _search_and_detail():
 
 def test_live_search_and_detail_contracts_use_official_links():
     response, detail = run(_search_and_detail())
-    if response.source_states["laws"] is SourceState.ERROR:
-        pytest.xfail("credential is not approved for the official law endpoint")
+    assert not response.errors
     assert response.source_states["laws"] in {SourceState.LIVE, SourceState.EMPTY}
     assert detail is not None
     assert detail.state in {SourceState.LIVE, SourceState.EMPTY}
@@ -108,9 +107,7 @@ async def _regional_search():
 
 def test_live_pyeongtaek_search_includes_both_regional_sources():
     response = run(_regional_search())
-    if response.source_states["municipal"] is SourceState.ERROR:
-        pytest.xfail("credential is not approved for the official municipal endpoint")
-    if response.source_states["provincial"] is SourceState.ERROR:
-        pytest.xfail("credential is not approved for the official provincial endpoint")
+    assert not response.errors
+    assert response.results
     assert response.source_states["municipal"] in {SourceState.LIVE, SourceState.EMPTY}
     assert response.source_states["provincial"] in {SourceState.LIVE, SourceState.EMPTY}
