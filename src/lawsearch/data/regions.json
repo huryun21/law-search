@@ -11,9 +11,15 @@
         "effective_on": "2026-07-01"
       },
       {
+        "url": "https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=281877",
+        "law_number": "21247",
+        "effective_on": "2026-07-01"
+      },
+      {
         "url": "https://www.law.go.kr/lsInfoP.do?lsiSeq=259479",
         "law_number": "20161",
-        "effective_on": "2026-07-01"
+        "effective_on": "2026-07-01",
+        "role": "original_enactment"
       },
       {
         "url": "https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=286453",
@@ -24,7 +30,8 @@
     "api_compatibility": {
       "status": "verified",
       "verified_on": "2026-08-12",
-      "verification_scope": "all 38 current org/sborg pairs affected by the 2026 integration and Incheon reorganization returned non-empty official API results",
+      "verification_artifact": "src/lawsearch/data/region_api_verification.json",
+      "verification_source_url": "https://www.law.go.kr/DRF/lawSearch.do",
       "unverified_codes": [],
       "fallback": "unverified codes resolve as candidates and are never promoted to a searchable region"
     }

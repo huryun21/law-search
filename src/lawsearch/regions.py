@@ -18,7 +18,9 @@ class RegionRegistry:
         self.unverified_api_codes = unverified_api_codes
         index: dict[str, list[Region]] = {}
         for region in regions:
-            names = {region.province_name, *region.aliases}
+            names = set(region.aliases)
+            if region.municipality_name is None:
+                names.add(region.province_name)
             if region.municipality_name:
                 names.add(region.municipality_name)
                 if region.municipality_name[-1:] in {"시", "군", "구"}:
@@ -41,7 +43,7 @@ class RegionRegistry:
         return cls(regions, unverified)
 
     def resolve(self, token: str) -> RegionResolution:
-        candidates = self._index.get(_normalize(token.lstrip("@")), ())
+        candidates = self._index.get(_normalize(token), ())
         if len(candidates) == 1 and (candidates[0].org, candidates[0].sborg) not in self.unverified_api_codes:
             return RegionResolution(candidates[0])
         return RegionResolution(None, candidates)

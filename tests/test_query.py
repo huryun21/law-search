@@ -4,6 +4,23 @@ from lawsearch.query import QueryError, build_query_variants, parse_query
 from lawsearch.regions import RegionRegistry
 
 
+@pytest.mark.parametrize("raw", ["", "   "])
+def test_empty_keyword_is_rejected(raw):
+    with pytest.raises(QueryError, match="검색어"):
+        parse_query(raw, RegionRegistry.from_package_data())
+
+
+def test_region_only_query_is_rejected():
+    with pytest.raises(QueryError, match="검색어"):
+        parse_query("@평택", RegionRegistry.from_package_data())
+
+
+@pytest.mark.parametrize("raw", ["@ 주차", "@없는지역 주차", "@@평택 주차"])
+def test_invalid_region_token_is_rejected(raw):
+    with pytest.raises(QueryError, match="지역"):
+        parse_query(raw, RegionRegistry.from_package_data())
+
+
 def test_keyword_without_region_does_not_request_ordinances():
     parsed = parse_query("주차 대수", RegionRegistry.from_package_data())
     assert parsed.keyword == "주차 대수"

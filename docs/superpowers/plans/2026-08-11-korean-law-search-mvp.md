@@ -181,12 +181,14 @@ git commit -m "build: add secret-safe local configuration"
 **Files:**
 - Create: `scripts/build_regions.py`
 - Create: `src/lawsearch/data/regions.json`
+- Create: `src/lawsearch/data/region_api_verification.json`
 - Create: `src/lawsearch/models.py`
 - Create: `src/lawsearch/regions.py`
 - Create: `src/lawsearch/query.py`
 - Create: `tests/conftest.py`
 - Create: `tests/test_regions.py`
 - Create: `tests/test_query.py`
+- Create: `tests/test_build_regions.py`
 
 **Interfaces:**
 - Produces: `Region(province_name: str, municipality_name: str | None, org: str, sborg: str | None, aliases: tuple[str, ...])`
@@ -198,7 +200,7 @@ git commit -m "build: add secret-safe local configuration"
 
 - [ ] **Step 1: Obtain and record the official region source**
 
-Export current 지방자치단체 institution codes from the official 행정표준코드관리시스템 institution-code search. Record the retrieval date and source URL in the generated JSON metadata. Keep the 2026-07-01 current structure: 16 province/metropolitan-city codes and 229 current city/county/district codes. Record the effective laws for 전남광주통합특별시 (법률 제21446호), the Incheon district reorganization (법률 제20161호), and 서구→서해구 (법률 제21734호). The source page is `https://code.go.kr/stdcode/orgCodeL.do`; the law API's `org`/`sborg` semantics are documented at `https://open.law.go.kr/LSO/openApi/guideResult.do?htmlName=ordinListGuide`.
+Export current 지방자치단체 institution codes from the official 행정표준코드관리시스템 institution-code search. Record the retrieval date and source URL in the generated JSON metadata. Keep the 2026-07-01 current structure: 16 province/metropolitan-city codes and 229 current city/county/district codes. Record the effective laws for 전남광주통합특별시 (법률 제21446호), the current consolidated Incheon district reorganization (법률 제21247호), its original enactment (법률 제20161호), and 서구→서해구 (법률 제21734호). Warn that Act No. 20161 is more than two years old and use Act No. 21247 as the current source. The source page is `https://code.go.kr/stdcode/orgCodeL.do`; the law API's `org`/`sborg` semantics are documented at `https://open.law.go.kr/LSO/openApi/guideResult.do?htmlName=ordinListGuide`.
 
 - [ ] **Step 2: Write failing registry tests before adding data**
 
@@ -245,7 +247,7 @@ Expected: `ModuleNotFoundError` or missing data failure.
 
 - [ ] **Step 4: Implement the smallest registry and deterministic generator**
 
-`build_regions.py` accepts an official export path and output path, emits UTF-8 JSON sorted by province then municipality, rejects missing/duplicate seven-digit codes, and includes source, retrieval, effective-law, and API-compatibility metadata. It keeps only current institution rows. `RegionRegistry` supports exact official names, suffix-stripped aliases such as `평택`, qualified aliases such as `경기/평택`, and explicit legacy successor aliases. It never picks the first ambiguous successor. A code listed as API-unverified resolves as a candidate even when it is the only match, preventing an unsafe ordinance request.
+`build_regions.py` accepts an official export path and output path, emits UTF-8 JSON sorted by province then municipality, rejects malformed or duplicate seven-digit codes, and includes source, retrieval, effective-law, and API-compatibility metadata. It keeps only current institution rows and produces deterministic output. API compatibility is verified only from an explicit artifact containing the official endpoint, verification date, success criteria, and verified code pairs; without it, affected/new codes default to unverified. `RegionRegistry` gives an exact full province name priority over descendant municipalities, supports suffix-stripped aliases such as `평택`, qualified aliases such as `경기/평택`, and explicit legacy successor aliases. It never strips an arbitrary leading `@` and never picks the first ambiguous successor. A code listed as API-unverified resolves as a candidate even when it is the only match, preventing an unsafe ordinance request.
 
 Define the shared immutable domain types in `models.py` with these exact fields:
 

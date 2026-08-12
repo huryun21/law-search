@@ -8,6 +8,22 @@ def test_registry_contains_all_current_provinces_and_municipalities():
     assert sum(region.sborg is not None for region in registry.regions) >= 229
 
 
+def test_each_full_province_name_resolves_to_province_level_only():
+    registry = RegionRegistry.from_package_data()
+    provinces = [region for region in registry.regions if region.sborg is None]
+    assert len(provinces) == 16
+    for province in provinces:
+        resolution = registry.resolve(province.province_name)
+        assert resolution.region == province
+        assert resolution.candidates == ()
+
+
+def test_registry_resolve_does_not_strip_query_markers():
+    resolution = RegionRegistry.from_package_data().resolve("@평택")
+    assert resolution.region is None
+    assert resolution.candidates == ()
+
+
 def test_integrated_province_is_the_current_official_region():
     resolution = RegionRegistry.from_package_data().resolve("전남광주")
     assert resolution.is_unique
