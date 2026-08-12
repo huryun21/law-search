@@ -23,6 +23,19 @@ def test_ambiguous_region_returns_candidates_without_searchable_region():
     assert len(parsed.candidates) >= 3
 
 
+@pytest.mark.parametrize("token", ["전남광주", "제물포", "영종", "검단"])
+def test_current_2026_region_tokens_are_searchable(token):
+    parsed = parse_query(f"@{token} 주차 대수", RegionRegistry.from_package_data())
+    assert parsed.keyword == "주차 대수"
+    assert parsed.region is not None
+
+
+def test_legacy_split_region_stops_search_and_returns_candidates():
+    parsed = parse_query("@인천/중구 주차 대수", RegionRegistry.from_package_data())
+    assert parsed.region is None
+    assert {item.municipality_name for item in parsed.candidates} == {"영종구", "제물포구"}
+
+
 def test_multiple_region_tokens_are_rejected():
     with pytest.raises(QueryError, match="하나"):
         parse_query("@평택 @수원 주차", RegionRegistry.from_package_data())

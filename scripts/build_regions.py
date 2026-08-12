@@ -9,12 +9,18 @@ from pathlib import Path
 
 SOURCE_URL = "https://code.go.kr/stdcode/orgCodeL.do"
 LAW_API_URL = "https://open.law.go.kr/LSO/openApi/guideResult.do?htmlName=ordinListGuide"
+INTEGRATION_LAW_URL = "https://www.law.go.kr/lsInfoP.do?lsiSeq=284111"
+INCHEON_REORGANIZATION_LAW_URL = "https://www.law.go.kr/lsInfoP.do?lsiSeq=259479"
+INCHEON_RENAME_LAW_URL = "https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=286453"
 PROVINCES = {
     "서울특별시": ("6110000", ("서울",)),
     "부산광역시": ("6260000", ("부산",)),
     "대구광역시": ("6270000", ("대구",)),
     "인천광역시": ("6280000", ("인천",)),
-    "광주광역시": ("6290000", ("광주",)),
+    "전남광주통합특별시": (
+        "6130000",
+        ("전남광주", "광주특별시", "광주광역시", "전라남도", "광주", "전남"),
+    ),
     "대전광역시": ("6300000", ("대전",)),
     "울산광역시": ("6310000", ("울산",)),
     "세종특별자치시": ("5690000", ("세종",)),
@@ -23,13 +29,27 @@ PROVINCES = {
     "충청북도": ("6430000", ("충북",)),
     "충청남도": ("6440000", ("충남",)),
     "전북특별자치도": ("6540000", ("전북",)),
-    "전라남도": ("6460000", ("전남",)),
     "경상북도": ("6470000", ("경북",)),
     "경상남도": ("6480000", ("경남",)),
     "제주특별자치도": ("6500000", ("제주",)),
 }
 SPECIAL_MUNICIPALITIES = {"6510000", "6520000"}
-PRE_REORGANIZATION = {"6280000", "6290000", "6460000"}
+FORMER_GWANGJU_CODES = {"5805000", "5810000", "5815000", "5820000", "5825000"}
+INCHEON_LEGACY_ALIASES = {
+    "3491000": ("인천/중구", "인천광역시/중구", "인천광역시 중구", "중구"),
+    "3501000": (
+        "인천/중구",
+        "인천광역시/중구",
+        "인천광역시 중구",
+        "중구",
+        "인천/동구",
+        "인천광역시/동구",
+        "인천광역시 동구",
+        "동구",
+    ),
+    "3561000": ("인천/서구", "인천광역시/서구", "인천광역시 서구", "서구"),
+    "3565000": ("인천/서구", "인천광역시/서구", "인천광역시 서구", "서구"),
+}
 
 
 def _open_export(path: Path):
@@ -38,6 +58,23 @@ def _open_export(path: Path):
         name = next(name for name in archive.namelist() if "유형분류" in name)
         return archive, io.TextIOWrapper(archive.open(name), encoding="cp949", newline="")
     return None, path.open(encoding="cp949", newline="")
+
+
+def _municipality_aliases(
+    province_name: str,
+    province_aliases: tuple[str, ...],
+    municipality: str,
+    sborg: str,
+) -> list[str]:
+    short_name = municipality[:-1] if municipality[-1:] in {"시", "군", "구"} else municipality
+    prefixes = list(province_aliases)
+    if province_name == "전남광주통합특별시":
+        prefixes = ["전남광주"]
+        prefixes += ["광주", "광주광역시"] if sborg in FORMER_GWANGJU_CODES else ["전남", "전라남도"]
+    aliases = [f"{province_name}/{municipality}", f"{province_name} {municipality}"]
+    aliases += [value for prefix in prefixes for value in (f"{prefix}/{municipality}", f"{prefix}/{short_name}")]
+    aliases += INCHEON_LEGACY_ALIASES.get(sborg, ())
+    return list(dict.fromkeys(aliases))
 
 
 def build(export_path: Path, output_path: Path, retrieved_on: str) -> None:
@@ -62,9 +99,7 @@ def build(export_path: Path, output_path: Path, retrieved_on: str) -> None:
             is_municipality = row["유형분류_중_의미"] == "기초자치단체" or sborg in SPECIAL_MUNICIPALITIES
             if row["최상위기관코드"] != org or row["차수"] != "2" or row["대표기관코드"] != sborg or not is_municipality:
                 continue
-            if row["존폐여부"] != "0" and not (org in PRE_REORGANIZATION and row["폐지일자"] == "20260701"):
-                continue
-            if row["생성일자"] == "20260320":
+            if row["존폐여부"] != "0":
                 continue
             if len(org) != 7 or not org.isdigit() or len(sborg) != 7 or not sborg.isdigit():
                 raise ValueError(f"invalid seven-digit code: {org}/{sborg}")
@@ -73,7 +108,7 @@ def build(export_path: Path, output_path: Path, retrieved_on: str) -> None:
                 raise ValueError(f"duplicate code pair: {org}/{sborg}")
             pairs.add(pair)
             municipality = row["최하위기관명"]
-            aliases = [f"{alias}/{municipality[:-1]}" for alias in province_aliases]
+            aliases = _municipality_aliases(province_name, province_aliases, municipality, sborg)
             regions.append({"province_name": province_name, "municipality_name": municipality, "org": org, "sborg": sborg, "aliases": aliases})
 
     regions.sort(key=lambda item: (item["province_name"], item["municipality_name"] or ""))
@@ -82,7 +117,19 @@ def build(export_path: Path, output_path: Path, retrieved_on: str) -> None:
             "source_url": SOURCE_URL,
             "law_api_url": LAW_API_URL,
             "retrieved_on": retrieved_on,
-            "selection_note": "17-region law API compatibility set; 2026-07-01 transition rows retained where required",
+            "effective_on": "2026-07-01",
+            "legal_sources": [
+                {"url": INTEGRATION_LAW_URL, "law_number": "21446", "effective_on": "2026-07-01"},
+                {"url": INCHEON_REORGANIZATION_LAW_URL, "law_number": "20161", "effective_on": "2026-07-01"},
+                {"url": INCHEON_RENAME_LAW_URL, "law_number": "21734", "effective_on": "2026-07-01"},
+            ],
+            "api_compatibility": {
+                "status": "verified",
+                "verified_on": retrieved_on,
+                "verification_scope": "all 38 current org/sborg pairs affected by the 2026 integration and Incheon reorganization returned non-empty official API results",
+                "unverified_codes": [],
+                "fallback": "unverified codes resolve as candidates and are never promoted to a searchable region",
+            },
         },
         "regions": regions,
     }

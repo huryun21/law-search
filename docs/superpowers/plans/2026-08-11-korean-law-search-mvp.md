@@ -198,7 +198,7 @@ git commit -m "build: add secret-safe local configuration"
 
 - [ ] **Step 1: Obtain and record the official region source**
 
-Export current 지방자치단체 institution codes from the official 행정표준코드관리시스템 institution-code search. Record the retrieval date and source URL in the generated JSON metadata. Keep only 17 current provinces/metropolitan cities and their current cities/counties/districts. The source page is `https://code.go.kr/stdcode/orgCodeL.do`; the law API's `org`/`sborg` semantics are documented at `https://open.law.go.kr/LSO/openApi/guideResult.do?htmlName=ordinListGuide`.
+Export current 지방자치단체 institution codes from the official 행정표준코드관리시스템 institution-code search. Record the retrieval date and source URL in the generated JSON metadata. Keep the 2026-07-01 current structure: 16 province/metropolitan-city codes and 229 current city/county/district codes. Record the effective laws for 전남광주통합특별시 (법률 제21446호), the Incheon district reorganization (법률 제20161호), and 서구→서해구 (법률 제21734호). The source page is `https://code.go.kr/stdcode/orgCodeL.do`; the law API's `org`/`sborg` semantics are documented at `https://open.law.go.kr/LSO/openApi/guideResult.do?htmlName=ordinListGuide`.
 
 - [ ] **Step 2: Write failing registry tests before adding data**
 
@@ -208,8 +208,18 @@ from lawsearch.regions import RegionRegistry
 
 def test_registry_contains_all_current_provinces_and_municipalities():
     registry = RegionRegistry.from_package_data()
-    assert len({region.org for region in registry.regions}) == 17
-    assert sum(region.sborg is not None for region in registry.regions) >= 226
+    assert len({region.org for region in registry.regions}) == 16
+    assert sum(region.sborg is not None for region in registry.regions) >= 229
+
+
+def test_current_2026_regions_and_legacy_aliases():
+    registry = RegionRegistry.from_package_data()
+    assert registry.resolve("전남광주").region.org == "6130000"
+    assert registry.resolve("광주/동구").region.sborg == "5805000"
+    assert registry.resolve("제물포").region.sborg == "3501000"
+    assert {item.municipality_name for item in registry.resolve("인천/중구").candidates} == {
+        "영종구", "제물포구"
+    }
 
 
 def test_pyeongtaek_resolves_to_gyeonggi_municipality():
@@ -235,7 +245,7 @@ Expected: `ModuleNotFoundError` or missing data failure.
 
 - [ ] **Step 4: Implement the smallest registry and deterministic generator**
 
-`build_regions.py` accepts an official export path and output path, emits UTF-8 JSON sorted by province then municipality, rejects missing/duplicate seven-digit codes, and includes `source_url` and `retrieved_on`. `RegionRegistry` supports exact official names, suffix-stripped aliases such as `평택`, and qualified aliases such as `경기/평택`; it never picks the first ambiguous match.
+`build_regions.py` accepts an official export path and output path, emits UTF-8 JSON sorted by province then municipality, rejects missing/duplicate seven-digit codes, and includes source, retrieval, effective-law, and API-compatibility metadata. It keeps only current institution rows. `RegionRegistry` supports exact official names, suffix-stripped aliases such as `평택`, qualified aliases such as `경기/평택`, and explicit legacy successor aliases. It never picks the first ambiguous successor. A code listed as API-unverified resolves as a candidate even when it is the only match, preventing an unsafe ordinance request.
 
 Define the shared immutable domain types in `models.py` with these exact fields:
 
@@ -359,12 +369,12 @@ Run: `python -m pytest tests/test_query.py -v`
 
 Expected RED: missing `parse_query`/`build_query_variants`.
 
-Implement one optional `@` token, whitespace normalization, qualified aliases, ambiguity return, and exact/compact variants with duplicate removal. Run the same command and expect all tests to pass.
+Implement one optional `@` token, whitespace normalization, current and legacy qualified aliases, ambiguity/successor-candidate return, API-unverified fallback, and exact/compact variants with duplicate removal. Run the same command and expect all tests to pass.
 
 - [ ] **Step 8: Commit**
 
 ```powershell
-git add scripts/build_regions.py src/lawsearch/data/regions.json src/lawsearch/models.py src/lawsearch/regions.py src/lawsearch/query.py tests/conftest.py tests/test_regions.py tests/test_query.py
+git add docs/superpowers/specs/2026-08-11-korean-law-search-design.md docs/superpowers/plans/2026-08-11-korean-law-search-mvp.md scripts/build_regions.py src/lawsearch/data/regions.json src/lawsearch/models.py src/lawsearch/regions.py src/lawsearch/query.py tests/conftest.py tests/test_regions.py tests/test_query.py
 git commit -m "feat: parse regional law searches"
 ```
 
