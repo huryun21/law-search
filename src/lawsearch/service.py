@@ -22,6 +22,11 @@ from lawsearch.query import build_query_variants
 from lawsearch.ranking import rank_results
 
 
+SourceOutcome = tuple[
+    tuple[SearchResult, ...], SourceState, bool, datetime | None
+]
+
+
 class SearchValidationError(ValueError):
     pass
 
@@ -65,14 +70,17 @@ class SearchService:
         results: list[SearchResult] = []
         errors: list[SourceError] = []
         states: dict[str, SourceState] = {}
+        fetched_at: dict[str, datetime] = {}
         for (name, _), outcome in zip(sources, gathered[:-1]):
             if isinstance(outcome, BaseException):
                 states[name] = SourceState.ERROR
                 errors.append(SourceError(name, f"{name} search failed"))
                 continue
-            source_results, state, source_error = outcome
+            source_results, state, source_error, source_fetched_at = outcome
             results.extend(source_results)
             states[name] = state
+            if source_fetched_at is not None:
+                fetched_at[name] = source_fetched_at
             if source_error is not None:
                 errors.append(source_error)
 
@@ -88,6 +96,7 @@ class SearchService:
             suggestions=suggestions,
             errors=tuple(errors),
             source_states=states,
+            source_fetched_at=fetched_at,
         )
 
     async def load_contexts(
@@ -132,7 +141,9 @@ class SearchService:
         parsed: ParsedQuery,
         refresh: bool,
         page: int,
-    ) -> tuple[tuple[SearchResult, ...], SourceState, SourceError | None]:
+    ) -> tuple[
+        tuple[SearchResult, ...], SourceState, SourceError | None, datetime | None
+    ]:
         outcomes = []
         for variant in build_query_variants(parsed.keyword):
             outcomes.append(
@@ -171,7 +182,12 @@ class SearchService:
         error = SourceError(name, f"{name} search failed") if any(
             outcome[2] for outcome in outcomes
         ) else None
-        return tuple(item[0] for item in retained), state, error
+        source_fetched_at = (
+            min(item.fetched_at for item, _ in retained)
+            if retained
+            else _outcome_fetched_at(outcomes, state)
+        )
+        return tuple(item[0] for item in retained), state, error, source_fetched_at
 
     async def _search_variant(
         self,
@@ -182,7 +198,7 @@ class SearchService:
         parsed: ParsedQuery,
         refresh: bool,
         page: int,
-    ) -> tuple[tuple[SearchResult, ...], SourceState, bool]:
+    ) -> SourceOutcome:
         now = self._clock()
         region_codes = _region_codes(parsed, name)
         key = make_cache_key(name, query, region_codes, page)
@@ -192,20 +208,28 @@ class SearchService:
                 normalize_results(cached.payload, group, quality, cached.fetched_at),
                 SourceState.FRESH_CACHE,
                 False,
+                cached.fetched_at,
             )
         try:
             payload = await self._call_source(name, query, parsed, page)
-            normalized = normalize_results(payload, group, quality, now)
+            fetched_at = self._clock()
+            normalized = normalize_results(payload, group, quality, fetched_at)
         except (ApiError, ResponseShapeError):
             if cached is None:
-                return (), SourceState.ERROR, True
+                return (), SourceState.ERROR, True, None
             return (
                 normalize_results(cached.payload, group, quality, cached.fetched_at),
                 SourceState.STALE_FALLBACK,
                 True,
+                cached.fetched_at,
             )
-        self._cache.put(key, payload, now)
-        return normalized, SourceState.LIVE if normalized else SourceState.EMPTY, False
+        self._cache.put(key, payload, fetched_at)
+        return (
+            normalized,
+            SourceState.LIVE if normalized else SourceState.EMPTY,
+            False,
+            fetched_at,
+        )
 
     async def _call_source(
         self, name: str, query: str, parsed: ParsedQuery, page: int
@@ -254,10 +278,10 @@ def _deduplicate(results: list[SearchResult]) -> tuple[SearchResult, ...]:
 
 
 def _retain_best_results(
-    outcomes: list[tuple[tuple[SearchResult, ...], SourceState, bool]],
+    outcomes: list[SourceOutcome],
 ) -> tuple[tuple[SearchResult, SourceState], ...]:
     best: dict[tuple[SourceGroup, str], tuple[SearchResult, SourceState]] = {}
-    for results, state, _ in outcomes:
+    for results, state, _, _ in outcomes:
         for result in results:
             key = (result.source, result.uid)
             retained = best.get(key)
@@ -267,12 +291,12 @@ def _retain_best_results(
 
 
 def _intersect_token_outcomes(
-    outcomes: list[tuple[tuple[SearchResult, ...], SourceState, bool]],
+    outcomes: list[SourceOutcome],
 ) -> tuple[tuple[SearchResult, SourceState], ...]:
     if not outcomes or any(not outcome[0] for outcome in outcomes):
         return ()
     common = {(item.source, item.uid) for item in outcomes[0][0]}
-    for results, _, _ in outcomes[1:]:
+    for results, _, _, _ in outcomes[1:]:
         common &= {(item.source, item.uid) for item in results}
 
     retained = []
@@ -282,7 +306,7 @@ def _intersect_token_outcomes(
             continue
         contributors = [
             (candidate, state)
-            for results, state, _ in outcomes
+            for results, state, _, _ in outcomes
             for candidate in results
             if (candidate.source, candidate.uid) == key
         ]
@@ -300,7 +324,7 @@ def _intersect_token_outcomes(
 
 
 def _combine_state(
-    outcomes: list[tuple[tuple[SearchResult, ...], SourceState, bool]],
+    outcomes: list[SourceOutcome],
     retained: tuple[tuple[SearchResult, SourceState], ...],
 ) -> SourceState:
     if retained:
@@ -316,6 +340,17 @@ def _combine_state(
     if SourceState.FRESH_CACHE in states:
         return SourceState.FRESH_CACHE
     return SourceState.EMPTY
+
+
+def _outcome_fetched_at(
+    outcomes: list[SourceOutcome], state: SourceState
+) -> datetime | None:
+    timestamps = [
+        fetched_at
+        for _, outcome_state, _, fetched_at in outcomes
+        if outcome_state is state and fetched_at is not None
+    ]
+    return min(timestamps) if timestamps else None
 
 
 def _result_state(states: list[SourceState]) -> SourceState:

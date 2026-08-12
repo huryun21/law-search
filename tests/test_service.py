@@ -102,6 +102,51 @@ def test_api_failure_uses_only_matching_stale_cache(service_factory, parsed_plai
     assert response.errors[0].source == "laws"
 
 
+def test_zero_result_stale_source_preserves_cache_retrieval_timestamp(tmp_path):
+    from conftest import FakeApi
+
+    now = datetime(2026, 8, 11, tzinfo=UTC)
+    stale_time = now - timedelta(days=2)
+    cache = CacheStore(tmp_path / "zero-result-stale.db")
+    cache.put(make_cache_key("laws", "미검색", (), 1), empty_payload("laws"), stale_time)
+    service = SearchService(FakeApi(fail={"laws"}), cache, lambda: now)
+
+    response = run(service.search(ParsedQuery("미검색")))
+
+    assert response.source_states["laws"] is SourceState.STALE_FALLBACK
+    assert response.source_fetched_at["laws"] == stale_time
+
+
+def test_zero_result_live_source_records_response_clock(service_factory):
+    now = datetime(2026, 8, 11, 12, tzinfo=UTC)
+    responses = {
+        (source, query): empty_payload(source)
+        for source in ("laws", "admin_rules")
+        for query in ("미검색",)
+    }
+    service, _ = service_factory(responses=responses)
+
+    response = run(service.search(ParsedQuery("미검색")))
+
+    assert response.source_states["laws"] is SourceState.EMPTY
+    assert response.source_fetched_at["laws"] == now
+
+
+def test_live_source_timestamp_is_captured_after_api_response(tmp_path):
+    from conftest import FakeApi
+
+    before = datetime(2026, 8, 11, 11, 59, tzinfo=UTC)
+    received = datetime(2026, 8, 11, 12, 0, tzinfo=UTC)
+    readings = iter((before, received, received, received, received, received))
+    service = SearchService(
+        FakeApi(), CacheStore(tmp_path / "response-clock.db"), lambda: next(readings)
+    )
+
+    response = run(service.search(ParsedQuery("주차")))
+
+    assert response.source_fetched_at["laws"] == received
+
+
 def test_stale_retained_result_is_not_mislabeled_by_fresh_empty_variant(
     tmp_path, parsed_plain, load_fixture
 ):

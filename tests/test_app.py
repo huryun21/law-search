@@ -6,7 +6,9 @@ from pathlib import Path
 import lawsearch.app as app
 
 from lawsearch.app import (
+    build_error_messages,
     build_grouped_view,
+    detail_session_key,
     fully_qualified_region_name,
     is_official_url,
 )
@@ -59,11 +61,14 @@ def make_response(result_factory, *, stale=(), error=()):
         suggestions=(),
         errors=tuple(SourceError(name, "private diagnostic") for name in error),
         source_states=states,
+        source_fetched_at={
+            name: datetime(2026, 8, 11, tzinfo=UTC) for name in states
+        },
     )
 
 
-def test_view_groups_keep_ranked_source_order(result_factory):
-    groups = build_grouped_view(make_response(result_factory))
+def test_view_groups_keep_ranked_source_order(result_factory, pyeongtaek):
+    groups = build_grouped_view(make_response(result_factory), pyeongtaek)
 
     assert [group.label for group in groups[:3]] == [
         "평택시 자치법규",
@@ -96,9 +101,85 @@ def test_empty_law_subgroups_are_not_rendered(result_factory):
         suggestions=(),
         errors=(),
         source_states={"laws": SourceState.LIVE},
+        source_fetched_at={"laws": datetime(2026, 8, 11, tzinfo=UTC)},
     )
 
     assert [group.label for group in build_grouped_view(response)] == ["법률"]
+
+
+def test_decree_only_response_does_not_invent_empty_law_group(result_factory):
+    response = SearchResponse(
+        results=(result_factory(SourceGroup.DECREE),),
+        suggestions=(),
+        errors=(),
+        source_states={"laws": SourceState.LIVE},
+        source_fetched_at={"laws": datetime(2026, 8, 11, tzinfo=UTC)},
+    )
+
+    assert [group.label for group in build_grouped_view(response)] == ["대통령령"]
+
+
+def test_empty_ordinance_labels_come_from_selected_region(pyeongtaek):
+    response = SearchResponse(
+        results=(),
+        suggestions=(),
+        errors=(),
+        source_states={
+            "municipal": SourceState.EMPTY,
+            "provincial": SourceState.ERROR,
+        },
+        source_fetched_at={"municipal": datetime(2026, 8, 11, tzinfo=UTC)},
+    )
+
+    groups = build_grouped_view(response, pyeongtaek)
+
+    assert [group.label for group in groups] == [
+        "평택시 자치법규",
+        "경기도 자치법규",
+    ]
+
+
+def test_empty_ordinance_groups_keep_priority_before_national_results(
+    result_factory, pyeongtaek
+):
+    fetched = datetime(2026, 8, 11, tzinfo=UTC)
+    response = SearchResponse(
+        results=(result_factory(SourceGroup.DECREE),),
+        suggestions=(),
+        errors=(),
+        source_states={
+            "municipal": SourceState.EMPTY,
+            "provincial": SourceState.EMPTY,
+            "laws": SourceState.LIVE,
+        },
+        source_fetched_at={
+            "municipal": fetched,
+            "provincial": fetched,
+            "laws": fetched,
+        },
+    )
+
+    assert [group.label for group in build_grouped_view(response, pyeongtaek)] == [
+        "평택시 자치법규",
+        "경기도 자치법규",
+        "대통령령",
+    ]
+
+
+def test_zero_result_stale_group_uses_source_retrieval_timestamp():
+    fetched = datetime(2026, 8, 9, 3, 4, 5, tzinfo=UTC)
+    response = SearchResponse(
+        results=(),
+        suggestions=(),
+        errors=(SourceError("laws", "private diagnostic"),),
+        source_states={"laws": SourceState.STALE_FALLBACK},
+        source_fetched_at={"laws": fetched},
+    )
+
+    group = build_grouped_view(response)[0]
+
+    assert group.fetched_at == fetched
+    assert "2026-08-09 12:04:05 KST" in group.status_message
 
 
 def test_official_link_allows_only_https_law_go_kr_hosts():
@@ -116,7 +197,13 @@ def test_region_label_is_fully_qualified(pyeongtaek):
 
 
 def test_plain_query_does_not_inherit_previous_region(monkeypatch, pyeongtaek):
-    streamlit = ControllerStub({"selected_region": pyeongtaek})
+    streamlit = ControllerStub(
+        {
+            "selected_region": pyeongtaek,
+            "region_candidates": (pyeongtaek,),
+            "pending_keyword": "이전 검색",
+        }
+    )
     searches = []
     monkeypatch.setattr(app, "parse_query", lambda raw, registry: ParsedQuery("주차장"))
     monkeypatch.setattr(
@@ -129,6 +216,31 @@ def test_plain_query_does_not_inherit_previous_region(monkeypatch, pyeongtaek):
 
     assert searches == [(ParsedQuery("주차장"), False)]
     assert "selected_region" not in streamlit.session_state
+    assert "region_candidates" not in streamlit.session_state
+    assert "pending_keyword" not in streamlit.session_state
+
+
+def test_invalid_query_clears_old_ambiguity(monkeypatch, pyeongtaek):
+    streamlit = ControllerStub(
+        {
+            "region_candidates": (pyeongtaek,),
+            "pending_keyword": "이전 검색",
+            "response": object(),
+            "parsed_query": ParsedQuery("이전 검색"),
+        }
+    )
+
+    def invalid(raw, registry):
+        raise app.QueryError("private parser diagnostic")
+
+    monkeypatch.setattr(app, "parse_query", invalid)
+
+    app._handle_search(streamlit, "@@잘못", object(), object(), refresh=False)
+
+    assert "region_candidates" not in streamlit.session_state
+    assert "pending_keyword" not in streamlit.session_state
+    assert "response" not in streamlit.session_state
+    assert "parsed_query" not in streamlit.session_state
 
 
 def test_ambiguous_query_preserves_keyword_until_candidate_selection(
@@ -152,7 +264,9 @@ def test_ambiguous_query_preserves_keyword_until_candidate_selection(
 
 
 def test_candidate_selection_resolves_preserved_keyword(monkeypatch, pyeongtaek):
-    streamlit = ControllerStub({"region_candidates": (pyeongtaek,)})
+    streamlit = ControllerStub(
+        {"region_candidates": (pyeongtaek,), "pending_keyword": "주차 대수"}
+    )
     searches = []
     monkeypatch.setattr(
         app,
@@ -165,6 +279,7 @@ def test_candidate_selection_resolves_preserved_keyword(monkeypatch, pyeongtaek)
     assert searches == [(ParsedQuery("주차 대수", pyeongtaek), False)]
     assert streamlit.session_state["selected_region"] == pyeongtaek
     assert "region_candidates" not in streamlit.session_state
+    assert "pending_keyword" not in streamlit.session_state
 
 
 def test_refresh_forwards_saved_query_and_refresh_flag(monkeypatch, pyeongtaek):
@@ -187,18 +302,53 @@ def test_refresh_forwards_saved_query_and_refresh_flag(monkeypatch, pyeongtaek):
 
 
 def test_ui_error_never_exposes_exception_text(monkeypatch):
-    streamlit = ControllerStub()
+    old_response = object()
+    streamlit = ControllerStub(
+        {"response": old_response, "parsed_query": ParsedQuery("이전 검색")}
+    )
     streamlit.spinner = lambda message: nullcontext()
 
     async def fail(settings, parsed, refresh):
-        raise RuntimeError("OC=super-secret")
+        raise RuntimeError("private adapter diagnostic 9382")
 
     monkeypatch.setattr(app, "_search", fail)
 
     app._perform_search(streamlit, object(), ParsedQuery("주차장"), refresh=False)
 
     assert streamlit.errors == ["검색을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요."]
-    assert "super-secret" not in streamlit.errors[0]
+    assert "diagnostic 9382" not in streamlit.errors[0]
+    assert "response" not in streamlit.session_state
+    assert "parsed_query" not in streamlit.session_state
+
+
+def test_detail_state_is_scoped_to_normalized_query_identity():
+    first = detail_session_key(SourceGroup.LAW, "same-id", "주차 대수")
+    equivalent = detail_session_key(SourceGroup.LAW, "same-id", "  주차   대수 ")
+    different = detail_session_key(SourceGroup.LAW, "same-id", "주차장")
+
+    assert first == equivalent
+    assert first != different
+
+
+def test_source_errors_are_named_and_diagnostics_are_redacted():
+    response = SearchResponse(
+        results=(),
+        suggestions=(),
+        errors=(
+            SourceError("admin_rules", "private adapter diagnostic 7194"),
+            SourceError("terms", "private term failure"),
+        ),
+        source_states={"admin_rules": SourceState.ERROR},
+        source_fetched_at={},
+    )
+
+    messages = build_error_messages(response)
+
+    assert messages == (
+        "행정규칙: 조회하지 못했습니다. 새로고침으로 다시 시도해 주세요.",
+        "법령용어: 조회하지 못했습니다. 새로고침으로 다시 시도해 주세요.",
+    )
+    assert all("diagnostic" not in message for message in messages)
 
 
 def test_search_client_is_closed_in_the_same_event_loop(monkeypatch, tmp_path):

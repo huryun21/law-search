@@ -88,6 +88,14 @@ class SearchResponse:
     suggestions: tuple[str, ...]
     errors: tuple[SourceError, ...]
     source_states: Mapping[str, SourceState]
+    source_fetched_at: Mapping[str, datetime]
+
+    def __post_init__(self) -> None:
+        if any(
+            value.tzinfo is None or value.utcoffset() is None
+            for value in self.source_fetched_at.values()
+        ):
+            raise ValueError("source retrieval timestamps must be timezone-aware")
 
 
 @dataclass(frozen=True)

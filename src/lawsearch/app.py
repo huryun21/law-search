@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -50,13 +51,20 @@ _SOURCE_KEYS = {
     SourceGroup.OTHER: "laws",
 }
 _DEFAULT_LABELS = {
-    SourceGroup.MUNICIPAL: "평택시 자치법규",
-    SourceGroup.PROVINCIAL: "경기도 자치법규",
+    SourceGroup.MUNICIPAL: "기초지자체 자치법규",
+    SourceGroup.PROVINCIAL: "광역지자체 자치법규",
     SourceGroup.LAW: "법률",
     SourceGroup.DECREE: "대통령령",
     SourceGroup.MINISTERIAL_RULE: "부령",
     SourceGroup.ADMIN_RULE: "행정규칙",
     SourceGroup.OTHER: "기타 법령",
+}
+_SOURCE_LABELS = {
+    "laws": "법령",
+    "admin_rules": "행정규칙",
+    "municipal": "기초지자체 자치법규",
+    "provincial": "광역지자체 자치법규",
+    "terms": "법령용어",
 }
 _STATE_MESSAGES = {
     SourceState.LIVE: "공식 API에서 방금 조회한 결과",
@@ -76,30 +84,67 @@ class ResultGroupView:
     fetched_at: datetime | None
 
 
-def build_grouped_view(response: SearchResponse) -> tuple[ResultGroupView, ...]:
+def build_grouped_view(
+    response: SearchResponse, region: Region | None = None
+) -> tuple[ResultGroupView, ...]:
     """Build source groups without depending on Streamlit state."""
-    grouped: list[ResultGroupView] = []
+    grouped: list[tuple[int, ResultGroupView]] = []
     represented_sources: set[str] = set()
-    for source in _SOURCE_ORDER:
+    for priority, source in enumerate(_SOURCE_ORDER):
         results = tuple(item for item in response.results if item.source is source)
-        source_key = _SOURCE_KEYS[source]
-        if not results and (
-            source_key not in response.source_states or source_key in represented_sources
-        ):
+        if not results:
             continue
+        source_key = _SOURCE_KEYS[source]
         state = response.source_states.get(source_key, SourceState.EMPTY)
-        fetched_at = min((item.fetched_at for item in results), default=None)
+        fetched_at = response.source_fetched_at.get(
+            source_key, min(item.fetched_at for item in results)
+        )
         grouped.append(
-            ResultGroupView(
-                label=_group_label(source, results),
-                results=results,
-                state=state,
-                status_message=_status_message(state, fetched_at),
-                fetched_at=fetched_at,
+            (
+                priority,
+                ResultGroupView(
+                    label=_group_label(source, results, region),
+                    results=results,
+                    state=state,
+                    status_message=_status_message(state, fetched_at),
+                    fetched_at=fetched_at,
+                ),
             )
         )
         represented_sources.add(source_key)
-    return tuple(grouped)
+    source_priority = {"municipal": 0, "provincial": 1, "laws": 2, "admin_rules": 5}
+    for source_key in ("municipal", "provincial", "laws", "admin_rules"):
+        if source_key not in response.source_states or source_key in represented_sources:
+            continue
+        state = response.source_states[source_key]
+        fetched_at = response.source_fetched_at.get(source_key)
+        grouped.append(
+            (
+                source_priority[source_key],
+                ResultGroupView(
+                    label=_empty_source_label(source_key, region),
+                    results=(),
+                    state=state,
+                    status_message=_status_message(state, fetched_at),
+                    fetched_at=fetched_at,
+                ),
+            )
+        )
+    return tuple(view for _, view in sorted(grouped, key=lambda item: item[0]))
+
+
+def build_error_messages(response: SearchResponse) -> tuple[str, ...]:
+    return tuple(
+        f"{_SOURCE_LABELS.get(error.source, '공식 자료')}: "
+        "조회하지 못했습니다. 새로고침으로 다시 시도해 주세요."
+        for error in response.errors
+    )
+
+
+def detail_session_key(source: SourceGroup, uid: str, keyword: str) -> str:
+    normalized = " ".join(keyword.split()).casefold()
+    query_id = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
+    return f"detail-{source.value}-{uid}-{query_id}"
 
 
 def fully_qualified_region_name(region: Region) -> str:
@@ -124,11 +169,23 @@ def is_official_url(value: str) -> bool:
     )
 
 
-def _group_label(source: SourceGroup, results: tuple[SearchResult, ...]) -> str:
+def _group_label(
+    source: SourceGroup, results: tuple[SearchResult, ...], region: Region | None
+) -> str:
     if source not in {SourceGroup.MUNICIPAL, SourceGroup.PROVINCIAL}:
         return _DEFAULT_LABELS[source]
     region_name = next((item.region_name for item in results if item.region_name), None)
-    return f"{region_name} 자치법규" if region_name else _DEFAULT_LABELS[source]
+    if region_name:
+        return f"{region_name} 자치법규"
+    return _empty_source_label(_SOURCE_KEYS[source], region)
+
+
+def _empty_source_label(source_key: str, region: Region | None) -> str:
+    if region is not None and source_key == "municipal" and region.municipality_name:
+        return f"{region.municipality_name} 자치법규"
+    if region is not None and source_key == "provincial":
+        return f"{region.province_name} 자치법규"
+    return _SOURCE_LABELS[source_key]
 
 
 def _status_message(state: SourceState, fetched_at: datetime | None) -> str:
@@ -195,7 +252,7 @@ def main() -> None:
 
     query_col, button_col = st.columns([5, 1])
     raw = query_col.text_input("검색어", placeholder="법령명이나 주제를 입력하세요")
-    search_clicked = button_col.button("검색", type="primary", use_container_width=True)
+    search_clicked = button_col.button("검색", type="primary", width="stretch")
     refresh_clicked = st.button("공식 API에서 새로고침") if "response" in st.session_state else False
 
     if search_clicked:
@@ -216,20 +273,24 @@ def main() -> None:
 
     response = st.session_state.get("response")
     if response is not None:
-        _render_response(st, settings, response, st.session_state["parsed_query"].keyword)
+        _render_response(st, settings, response, st.session_state["parsed_query"])
 
 
 def _handle_search(st: Any, raw: str, registry: RegionRegistry, settings: Settings, refresh: bool) -> None:
+    _clear_response(st)
     try:
         parsed = parse_query(raw, registry)
     except QueryError:
+        _clear_ambiguity(st)
         st.error("검색어와 지역 표기를 확인해 주세요. 지역은 @평택처럼 하나만 입력합니다.")
         return
     if parsed.candidates:
         st.session_state.region_candidates = parsed.candidates
         st.session_state.pending_keyword = parsed.keyword
         st.session_state.pop("response", None)
+        st.session_state.pop("parsed_query", None)
         return
+    _clear_ambiguity(st)
     if parsed.region is None:
         st.session_state.pop("selected_region", None)
     else:
@@ -241,11 +302,22 @@ def _apply_region_candidate(
     st: Any, settings: Settings, keyword: str, region: Region
 ) -> None:
     st.session_state.selected_region = region
-    st.session_state.pop("region_candidates", None)
+    _clear_ambiguity(st)
     _perform_search(st, settings, ParsedQuery(keyword, region), refresh=False)
 
 
+def _clear_ambiguity(st: Any) -> None:
+    st.session_state.pop("region_candidates", None)
+    st.session_state.pop("pending_keyword", None)
+
+
+def _clear_response(st: Any) -> None:
+    st.session_state.pop("response", None)
+    st.session_state.pop("parsed_query", None)
+
+
 def _perform_search(st: Any, settings: Settings, parsed: ParsedQuery, refresh: bool) -> None:
+    _clear_response(st)
     try:
         with st.spinner("공식 자료를 조회하는 중입니다…"):
             response = _run(_search(settings, parsed, refresh))
@@ -259,10 +331,14 @@ def _perform_search(st: Any, settings: Settings, parsed: ParsedQuery, refresh: b
     st.session_state.response = response
 
 
-def _render_response(st: Any, settings: Settings, response: SearchResponse, keyword: str) -> None:
+def _render_response(
+    st: Any, settings: Settings, response: SearchResponse, parsed: ParsedQuery
+) -> None:
     if response.suggestions:
         st.caption("연관 검색어: " + ", ".join(response.suggestions))
-    for group in build_grouped_view(response):
+    for message in build_error_messages(response):
+        st.error(message)
+    for group in build_grouped_view(response, parsed.region):
         with st.expander(f"{group.label} ({len(group.results)})", expanded=bool(group.results)):
             if group.state is SourceState.STALE_FALLBACK:
                 st.warning(group.status_message)
@@ -272,7 +348,7 @@ def _render_response(st: Any, settings: Settings, response: SearchResponse, keyw
             else:
                 st.caption(group.status_message)
             for result in group.results:
-                _render_result(st, settings, result, keyword)
+                _render_result(st, settings, result, parsed.keyword)
 
 
 def _render_result(st: Any, settings: Settings, result: SearchResult, keyword: str) -> None:
@@ -290,7 +366,7 @@ def _render_result(st: Any, settings: Settings, result: SearchResult, keyword: s
         st.link_button("공식 원문 열기", result.official_url)
     else:
         st.caption("공식 링크를 확인할 수 없습니다.")
-    detail_key = f"detail-{result.source.value}-{result.uid}"
+    detail_key = detail_session_key(result.source, result.uid, keyword)
     if st.button("본문 일치 보기", key=f"load-{detail_key}"):
         try:
             st.session_state[detail_key] = _run(_contexts(settings, result, keyword))
