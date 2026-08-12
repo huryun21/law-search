@@ -3,8 +3,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from lawsearch.cache import CacheStore
-from lawsearch.models import MatchQuality, ParsedQuery, SourceGroup, SourceState
+from lawsearch.cache import CacheStore, make_cache_key
+from lawsearch.models import MatchQuality, ParsedQuery, Region, SourceGroup, SourceState
 from lawsearch.service import SearchService, SearchValidationError
 
 
@@ -37,6 +37,19 @@ def test_regional_search_calls_both_ordinance_levels_and_ranks_them_first(
         SourceGroup.MUNICIPAL,
         SourceGroup.PROVINCIAL,
     ]
+
+
+def test_province_only_region_calls_no_municipal_source(service_factory):
+    service, fake_api = service_factory()
+    province = Region("경기도", None, "6410000")
+
+    response = run(service.search(ParsedQuery("주차 단속", province)))
+
+    assert "provincial" in fake_api.calls
+    assert "municipal" not in fake_api.calls
+    assert "provincial" in response.source_states
+    assert "municipal" not in response.source_states
+    assert not any(error.source == "municipal" for error in response.errors)
 
 
 def test_ambiguous_candidates_fail_before_any_api_call(service_factory, pyeongtaek):
@@ -87,6 +100,113 @@ def test_api_failure_uses_only_matching_stale_cache(service_factory, parsed_plai
     assert response.source_states["laws"] is SourceState.STALE_FALLBACK
     assert any(item.source is SourceGroup.LAW for item in response.results)
     assert response.errors[0].source == "laws"
+
+
+def test_stale_retained_result_is_not_mislabeled_by_fresh_empty_variant(
+    tmp_path, parsed_plain, load_fixture
+):
+    from conftest import FakeApi
+
+    now = datetime(2026, 8, 11, tzinfo=UTC)
+    stale_time = now - timedelta(days=2)
+    cache = CacheStore(tmp_path / "mixed-fresh-stale.db")
+    cache.put(
+        make_cache_key("laws", "주차 단속", (), 1),
+        empty_payload("laws"),
+        now,
+    )
+    cache.put(
+        make_cache_key("laws", "주차단속", (), 1),
+        load_fixture("law-single.json"),
+        stale_time,
+    )
+    api = FakeApi(fail={("laws", "주차단속")})
+    service = SearchService(api, cache, lambda: now)
+
+    response = run(service.search(parsed_plain))
+
+    retained = next(item for item in response.results if item.uid == "001498")
+    assert response.source_states["laws"] is SourceState.STALE_FALLBACK
+    assert retained.fetched_at == stale_time
+
+
+def test_stale_retained_result_is_not_mislabeled_by_live_empty_variant(
+    tmp_path, parsed_plain, load_fixture
+):
+    from conftest import FakeApi
+
+    now = datetime(2026, 8, 11, tzinfo=UTC)
+    stale_time = now - timedelta(days=2)
+    cache = CacheStore(tmp_path / "mixed-live-empty-stale.db")
+    cache.put(
+        make_cache_key("laws", "주차단속", (), 1),
+        load_fixture("law-single.json"),
+        stale_time,
+    )
+    api = FakeApi(
+        fail={("laws", "주차단속")},
+        responses={("laws", "주차 단속"): empty_payload("laws")},
+    )
+    service = SearchService(api, cache, lambda: now)
+
+    response = run(service.search(parsed_plain))
+
+    retained = next(item for item in response.results if item.uid == "001498")
+    assert response.source_states["laws"] is SourceState.STALE_FALLBACK
+    assert retained.fetched_at == stale_time
+
+
+def test_stale_unique_result_is_not_mislabeled_by_live_duplicate(
+    tmp_path, parsed_plain, load_fixture
+):
+    from conftest import FakeApi
+
+    now = datetime(2026, 8, 11, tzinfo=UTC)
+    stale_time = now - timedelta(days=2)
+    cache = CacheStore(tmp_path / "mixed-live-stale.db")
+    cache.put(
+        make_cache_key("laws", "주차단속", (), 1),
+        load_fixture("law-multiple.json"),
+        stale_time,
+    )
+    api = FakeApi(
+        fail={("laws", "주차단속")},
+        responses={("laws", "주차 단속"): load_fixture("law-single.json")},
+    )
+    service = SearchService(api, cache, lambda: now)
+
+    response = run(service.search(parsed_plain))
+
+    decree = next(item for item in response.results if item.uid == "004743")
+    assert response.source_states["laws"] is SourceState.STALE_FALLBACK
+    assert decree.fetched_at == stale_time
+
+
+def test_losing_stale_duplicate_does_not_taint_retained_fresh_result(
+    tmp_path, parsed_plain, load_fixture
+):
+    from conftest import FakeApi
+
+    now = datetime(2026, 8, 11, tzinfo=UTC)
+    cache = CacheStore(tmp_path / "fresh-wins.db")
+    cache.put(
+        make_cache_key("laws", "주차 단속", (), 1),
+        load_fixture("law-single.json"),
+        now,
+    )
+    cache.put(
+        make_cache_key("laws", "주차단속", (), 1),
+        load_fixture("law-single.json"),
+        now - timedelta(days=2),
+    )
+    service = SearchService(
+        FakeApi(fail={("laws", "주차단속")}), cache, lambda: now
+    )
+
+    response = run(service.search(parsed_plain))
+
+    assert response.source_states["laws"] is SourceState.FRESH_CACHE
+    assert next(item for item in response.results if item.uid == "001498").fetched_at == now
 
 
 def test_term_failure_is_independent_of_search_results(service_factory, parsed_plain):
@@ -242,3 +362,80 @@ def test_detail_uses_stale_only_after_api_failure(tmp_path, result_factory):
 
     assert response.state is SourceState.STALE_FALLBACK
     assert response.fetched_at == now
+
+
+def test_unexpected_detail_failure_without_cache_returns_safe_error(
+    tmp_path, result_factory
+):
+    from conftest import FakeApi
+
+    class BrokenDetailApi(FakeApi):
+        async def fetch_detail(self, result):
+            raise RuntimeError("private adapter diagnostic")
+
+    now = datetime(2026, 8, 11, tzinfo=UTC)
+    service = SearchService(
+        BrokenDetailApi(), CacheStore(tmp_path / "detail-error.db"), lambda: now
+    )
+
+    response = run(
+        service.load_contexts(result_factory(SourceGroup.LAW), "주차 단속")
+    )
+
+    assert response.contexts == ()
+    assert response.state is SourceState.ERROR
+    assert response.fetched_at == now
+
+
+def test_unexpected_detail_failure_uses_stale_cache(tmp_path, result_factory):
+    from conftest import FakeApi
+
+    class BrokenDetailApi(FakeApi):
+        async def fetch_detail(self, result):
+            raise RuntimeError("private adapter diagnostic")
+
+    now = datetime(2026, 8, 11, tzinfo=UTC)
+    current = [now]
+    api = FakeApi()
+    cache = CacheStore(tmp_path / "detail-runtime-stale.db")
+    service = SearchService(api, cache, lambda: current[0])
+    result = result_factory(SourceGroup.LAW, uid="detail-runtime-stale")
+    run(service.load_contexts(result, "주차 단속"))
+    current[0] += timedelta(days=2)
+    service = SearchService(BrokenDetailApi(), cache, lambda: current[0])
+
+    response = run(service.load_contexts(result, "주차 단속"))
+
+    assert response.state is SourceState.STALE_FALLBACK
+    assert response.fetched_at == now
+
+
+def test_fresh_detail_bypasses_failure_but_refresh_falls_back_safely(
+    tmp_path, result_factory
+):
+    from conftest import FakeApi
+
+    class BrokenDetailApi(FakeApi):
+        def __init__(self):
+            super().__init__()
+            self.detail_attempts = 0
+
+        async def fetch_detail(self, result):
+            self.detail_attempts += 1
+            raise RuntimeError("private adapter diagnostic")
+
+    now = datetime(2026, 8, 11, tzinfo=UTC)
+    cache = CacheStore(tmp_path / "detail-refresh-failure.db")
+    result = result_factory(SourceGroup.LAW, uid="detail-refresh-failure")
+    seeded = SearchService(FakeApi(), cache, lambda: now)
+    run(seeded.load_contexts(result, "주차 단속"))
+    broken = BrokenDetailApi()
+    service = SearchService(broken, cache, lambda: now)
+
+    fresh = run(service.load_contexts(result, "주차 단속"))
+    refreshed = run(service.load_contexts(result, "주차 단속", refresh=True))
+
+    assert fresh.state is SourceState.FRESH_CACHE
+    assert refreshed.state is SourceState.STALE_FALLBACK
+    assert refreshed.fetched_at == now
+    assert broken.detail_attempts == 1

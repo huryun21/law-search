@@ -48,12 +48,9 @@ class SearchService:
             ("admin_rules", SourceGroup.ADMIN_RULE),
         ]
         if parsed.region is not None:
-            sources.extend(
-                [
-                    ("municipal", SourceGroup.MUNICIPAL),
-                    ("provincial", SourceGroup.PROVINCIAL),
-                ]
-            )
+            if parsed.region.sborg is not None:
+                sources.append(("municipal", SourceGroup.MUNICIPAL))
+            sources.append(("provincial", SourceGroup.PROVINCIAL))
 
         source_tasks = [
             self._search_source(name, group, parsed, refresh, page)
@@ -112,9 +109,9 @@ class SearchService:
             )
         try:
             payload = await self._api.fetch_detail(result)
-        except ApiError:
+        except Exception:
             if cached is None:
-                raise
+                return DetailResponse((), SourceState.ERROR, now)
             return DetailResponse(
                 extract_contexts(cached.payload, keyword),
                 SourceState.STALE_FALLBACK,
@@ -150,12 +147,12 @@ class SearchService:
                 )
             )
 
-        results = [item for outcome in outcomes for item in outcome[0]]
+        retained = _retain_best_results(outcomes)
         had_failure = any(outcome[2] for outcome in outcomes)
-        if not results and not had_failure:
+        if not retained and not had_failure:
             tokens = tuple(dict.fromkeys(parsed.keyword.split()))
             if len(tokens) >= 2:
-                token_results = []
+                token_outcomes = []
                 for token in tokens:
                     outcome = await self._search_variant(
                         name,
@@ -166,15 +163,15 @@ class SearchService:
                         refresh,
                         page,
                     )
-                    token_results.append(outcome[0])
+                    token_outcomes.append(outcome)
                     outcomes.append(outcome)
-                results.extend(_intersect_tokens(token_results))
+                retained = _intersect_token_outcomes(token_outcomes)
 
-        state = _combine_state(outcomes, bool(results))
+        state = _combine_state(outcomes, retained)
         error = SourceError(name, f"{name} search failed") if any(
             outcome[2] for outcome in outcomes
         ) else None
-        return tuple(results), state, error
+        return tuple(item[0] for item in retained), state, error
 
     async def _search_variant(
         self,
@@ -256,34 +253,69 @@ def _deduplicate(results: list[SearchResult]) -> tuple[SearchResult, ...]:
     return tuple(best.values())
 
 
-def _intersect_tokens(
-    groups: list[tuple[SearchResult, ...]],
-) -> tuple[SearchResult, ...]:
-    if not groups or any(not group for group in groups):
+def _retain_best_results(
+    outcomes: list[tuple[tuple[SearchResult, ...], SourceState, bool]],
+) -> tuple[tuple[SearchResult, SourceState], ...]:
+    best: dict[tuple[SourceGroup, str], tuple[SearchResult, SourceState]] = {}
+    for results, state, _ in outcomes:
+        for result in results:
+            key = (result.source, result.uid)
+            retained = best.get(key)
+            if retained is None or result.quality < retained[0].quality:
+                best[key] = (result, state)
+    return tuple(best.values())
+
+
+def _intersect_token_outcomes(
+    outcomes: list[tuple[tuple[SearchResult, ...], SourceState, bool]],
+) -> tuple[tuple[SearchResult, SourceState], ...]:
+    if not outcomes or any(not outcome[0] for outcome in outcomes):
         return ()
-    common = set((item.source, item.uid) for item in groups[0])
-    for group in groups[1:]:
-        common &= {(item.source, item.uid) for item in group}
-    return tuple(
-        replace(item, quality=MatchQuality.ALL_TERMS)
-        for item in groups[0]
-        if (item.source, item.uid) in common
-    )
+    common = {(item.source, item.uid) for item in outcomes[0][0]}
+    for results, _, _ in outcomes[1:]:
+        common &= {(item.source, item.uid) for item in results}
+
+    retained = []
+    for item in outcomes[0][0]:
+        key = (item.source, item.uid)
+        if key not in common:
+            continue
+        contributing_states = [
+            state
+            for results, state, _ in outcomes
+            if any((candidate.source, candidate.uid) == key for candidate in results)
+        ]
+        retained.append(
+            (
+                replace(item, quality=MatchQuality.ALL_TERMS),
+                _result_state(contributing_states),
+            )
+        )
+    return tuple(retained)
 
 
 def _combine_state(
     outcomes: list[tuple[tuple[SearchResult, ...], SourceState, bool]],
-    has_results: bool,
+    retained: tuple[tuple[SearchResult, SourceState], ...],
 ) -> SourceState:
+    if retained:
+        return _result_state([state for _, state in retained])
+
     states = {outcome[1] for outcome in outcomes}
-    if SourceState.LIVE in states:
-        return SourceState.LIVE
-    if SourceState.FRESH_CACHE in states:
-        return SourceState.FRESH_CACHE
     if SourceState.STALE_FALLBACK in states:
         return SourceState.STALE_FALLBACK
-    if has_results:
-        return SourceState.LIVE
     if SourceState.ERROR in states:
         return SourceState.ERROR
+    if SourceState.EMPTY in states:
+        return SourceState.EMPTY
+    if SourceState.FRESH_CACHE in states:
+        return SourceState.FRESH_CACHE
     return SourceState.EMPTY
+
+
+def _result_state(states: list[SourceState]) -> SourceState:
+    if SourceState.STALE_FALLBACK in states:
+        return SourceState.STALE_FALLBACK
+    if SourceState.LIVE in states:
+        return SourceState.LIVE
+    return SourceState.FRESH_CACHE
