@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import Enum, IntEnum
+from typing import Mapping
 
 
 class SourceGroup(str, Enum):
@@ -64,4 +65,33 @@ class SearchResult:
     effective_date: date | None
     is_current: bool
     official_url: str
+    fetched_at: datetime
+
+
+class SourceState(str, Enum):
+    LIVE = "live"
+    FRESH_CACHE = "fresh_cache"
+    STALE_FALLBACK = "stale_fallback"
+    EMPTY = "empty"
+    ERROR = "error"
+
+
+@dataclass(frozen=True)
+class SourceError:
+    source: str
+    message: str
+
+
+@dataclass(frozen=True)
+class SearchResponse:
+    results: tuple[SearchResult, ...]
+    suggestions: tuple[str, ...]
+    errors: tuple[SourceError, ...]
+    source_states: Mapping[str, SourceState]
+
+
+@dataclass(frozen=True)
+class DetailResponse:
+    contexts: tuple[str, ...]
+    state: SourceState
     fetched_at: datetime
