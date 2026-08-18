@@ -41,6 +41,42 @@ class ControllerStub:
         self.errors.append(message)
 
 
+def test_search_form_submits_entered_query():
+    form_state = {"active": False, "enter_to_submit": None}
+
+    class FormContext:
+        def __enter__(self):
+            form_state["active"] = True
+
+        def __exit__(self, *args):
+            form_state["active"] = False
+
+    class InputColumn:
+        def text_input(self, *args, **kwargs):
+            return "방화구획"
+
+    class SubmitColumn:
+        def form_submit_button(self, *args, **kwargs):
+            assert form_state["active"]
+            return True
+
+    class StreamlitStub:
+        def form(self, key, *, enter_to_submit, **kwargs):
+            form_state["enter_to_submit"] = enter_to_submit
+            return FormContext()
+
+        def columns(self, widths):
+            assert form_state["active"]
+            return InputColumn(), SubmitColumn()
+
+    assert hasattr(app, "_render_search_form"), "검색 입력이 아직 Enter 제출 form이 아닙니다"
+
+    raw, submitted = app._render_search_form(StreamlitStub())
+
+    assert (raw, submitted) == ("방화구획", True)
+    assert form_state == {"active": False, "enter_to_submit": True}
+
+
 def make_response(result_factory, *, stale=(), error=()):
     results = tuple(
         result_factory(source, title=f"{source.value} title")

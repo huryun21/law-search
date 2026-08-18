@@ -302,6 +302,23 @@ def _load_resources(streamlit: Any) -> tuple[Settings, RegionRegistry]:
     return resources()
 
 
+def _render_search_form(streamlit: Any) -> tuple[str, bool]:
+    with streamlit.form(
+        "search-form",
+        clear_on_submit=False,
+        enter_to_submit=True,
+        border=False,
+    ):
+        query_col, button_col = streamlit.columns([5, 1])
+        raw = query_col.text_input(
+            "검색어", placeholder="법령명이나 주제를 입력하세요"
+        )
+        submitted = button_col.form_submit_button(
+            "검색", type="primary", width="stretch"
+        )
+    return raw, submitted
+
+
 def main() -> None:
     import streamlit as st
 
@@ -326,9 +343,7 @@ def main() -> None:
             st.session_state.pop("response", None)
             st.rerun()
 
-    query_col, button_col = st.columns([5, 1])
-    raw = query_col.text_input("검색어", placeholder="법령명이나 주제를 입력하세요")
-    search_clicked = button_col.button("검색", type="primary", width="stretch")
+    raw, search_clicked = _render_search_form(st)
     refresh_clicked = st.button("공식 API에서 새로고침") if "response" in st.session_state else False
 
     if search_clicked:
