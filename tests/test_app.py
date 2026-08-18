@@ -3,6 +3,7 @@ from contextlib import nullcontext
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
+import subprocess
 
 import lawsearch.app as app
 
@@ -424,3 +425,17 @@ def test_launcher_contract_is_loopback_and_conditional_install():
     assert "앱을 시작하는 중입니다" in launcher
     assert "config.local.toml" in folded
     assert "pause" in folded
+
+
+def test_launcher_git_attribute_forces_windows_line_endings():
+    project_root = Path(__file__).parents[1]
+
+    result = subprocess.run(
+        ["git", "check-attr", "eol", "--", "run.bat"],
+        cwd=project_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.stdout.strip().endswith("eol: crlf")

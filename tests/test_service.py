@@ -89,6 +89,70 @@ def test_provincial_results_exclude_subordinate_municipalities(
     assert authorities == {"경기도"}
 
 
+def test_provincial_filter_applies_to_fresh_cached_payload(
+    tmp_path, parsed_pyeongtaek
+):
+    from conftest import FakeApi
+
+    now = datetime(2026, 8, 11, tzinfo=UTC)
+    mixed = ordinance_payload("경기도", "경기도 광명시", "경기도 평택시")
+    cache = CacheStore(tmp_path / "provincial-fresh.db")
+    for query in ("주차 대수", "주차대수"):
+        cache.put(
+            make_cache_key("provincial", query, ("6410000",), 1),
+            mixed,
+            now,
+        )
+    service = SearchService(FakeApi(), cache, lambda: now)
+
+    response = run(
+        service.search(ParsedQuery("주차 대수", parsed_pyeongtaek.region))
+    )
+
+    authorities = {
+        item.authority
+        for item in response.results
+        if item.source is SourceGroup.PROVINCIAL
+    }
+    assert authorities == {"경기도"}
+    assert response.source_states["provincial"] is SourceState.FRESH_CACHE
+
+
+def test_provincial_filter_applies_to_stale_fallback_payload(
+    tmp_path, parsed_pyeongtaek
+):
+    from conftest import FakeApi
+
+    now = datetime(2026, 8, 11, tzinfo=UTC)
+    stale_time = now - timedelta(days=2)
+    mixed = ordinance_payload("경기도", "경기도 광명시", "경기도 평택시")
+    cache = CacheStore(tmp_path / "provincial-stale.db")
+    queries = ("주차 대수", "주차대수")
+    for query in queries:
+        cache.put(
+            make_cache_key("provincial", query, ("6410000",), 1),
+            mixed,
+            stale_time,
+        )
+    service = SearchService(
+        FakeApi(fail={("provincial", query) for query in queries}),
+        cache,
+        lambda: now,
+    )
+
+    response = run(
+        service.search(ParsedQuery("주차 대수", parsed_pyeongtaek.region))
+    )
+
+    authorities = {
+        item.authority
+        for item in response.results
+        if item.source is SourceGroup.PROVINCIAL
+    }
+    assert authorities == {"경기도"}
+    assert response.source_states["provincial"] is SourceState.STALE_FALLBACK
+
+
 def test_province_only_region_calls_no_municipal_source(service_factory):
     service, fake_api = service_factory()
     province = Region("경기도", None, "6410000")
