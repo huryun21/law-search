@@ -204,8 +204,11 @@ class SearchService:
         key = make_cache_key(name, query, region_codes, page)
         cached = self._cache.get(key, now)
         if cached is not None and cached.is_fresh and not refresh:
+            normalized = normalize_results(
+                cached.payload, group, quality, cached.fetched_at
+            )
             return (
-                normalize_results(cached.payload, group, quality, cached.fetched_at),
+                _filter_provincial_results(name, parsed, normalized),
                 SourceState.FRESH_CACHE,
                 False,
                 cached.fetched_at,
@@ -217,13 +220,17 @@ class SearchService:
         except (ApiError, ResponseShapeError):
             if cached is None:
                 return (), SourceState.ERROR, True, None
+            normalized = normalize_results(
+                cached.payload, group, quality, cached.fetched_at
+            )
             return (
-                normalize_results(cached.payload, group, quality, cached.fetched_at),
+                _filter_provincial_results(name, parsed, normalized),
                 SourceState.STALE_FALLBACK,
                 True,
                 cached.fetched_at,
             )
         self._cache.put(key, payload, fetched_at)
+        normalized = _filter_provincial_results(name, parsed, normalized)
         return (
             normalized,
             SourceState.LIVE if normalized else SourceState.EMPTY,
@@ -265,6 +272,22 @@ def _region_codes(parsed: ParsedQuery, name: str) -> tuple[str, ...]:
     if name == "provincial":
         return (parsed.region.org,)
     return tuple(code for code in (parsed.region.org, parsed.region.sborg) if code)
+
+
+def _filter_provincial_results(
+    name: str,
+    parsed: ParsedQuery,
+    results: tuple[SearchResult, ...],
+) -> tuple[SearchResult, ...]:
+    if name != "provincial" or parsed.region is None:
+        return results
+    expected = " ".join(parsed.region.province_name.split()).casefold()
+    return tuple(
+        item
+        for item in results
+        if item.authority is not None
+        and " ".join(item.authority.split()).casefold() == expected
+    )
 
 
 def _deduplicate(results: list[SearchResult]) -> tuple[SearchResult, ...]:

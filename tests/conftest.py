@@ -87,7 +87,8 @@ class FakeApi:
 
     async def search_ordinances(self, query, region, province_only, page=1):
         operation = "provincial" if province_only else "municipal"
-        return self._search(operation, query, "ordin.json")
+        fixture = "ordin-provincial.json" if province_only else "ordin.json"
+        return self._search(operation, query, fixture)
 
     async def suggest_terms(self, query: str):
         self.calls.add("terms")
@@ -129,7 +130,7 @@ def service_factory(tmp_path):
                 "laws": "law-multiple.json",
                 "admin_rules": "admrul.json",
                 "municipal": "ordin.json",
-                "provincial": "ordin.json",
+                "provincial": "ordin-provincial.json",
             }[source]
             region_codes = {
                 "municipal": ("6410000", "3910000"),

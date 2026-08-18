@@ -1,5 +1,6 @@
 @echo off
 setlocal
+chcp 65001 >nul
 cd /d "%~dp0"
 
 if not exist "config.local.toml" goto missing_config
@@ -17,7 +18,8 @@ if not errorlevel 1 goto launch
 if errorlevel 1 goto install_failed
 
 :launch
-".venv\Scripts\python.exe" -m streamlit run src\lawsearch\app.py --server.address 127.0.0.1 --server.headless false
+echo [정보] 앱을 시작하는 중입니다. 첫 실행은 최대 1분 정도 걸릴 수 있습니다.
+".venv\Scripts\python.exe" -m streamlit run src\lawsearch\app.py --server.address 127.0.0.1 --server.headless false --server.fileWatcherType none
 if errorlevel 1 goto launch_failed
 exit /b 0
 

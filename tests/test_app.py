@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import nullcontext
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -75,6 +76,28 @@ def test_view_groups_keep_ranked_source_order(result_factory, pyeongtaek):
         "경기도 자치법규",
         "법률",
     ]
+
+
+def test_provincial_group_label_uses_selected_province_not_result_authority(
+    result_factory, pyeongtaek
+):
+    provincial = replace(
+        result_factory(SourceGroup.PROVINCIAL),
+        authority="경기도 광명시",
+        region_name="경기도 광명시",
+    )
+    fetched = datetime(2026, 8, 11, tzinfo=UTC)
+    response = SearchResponse(
+        results=(provincial,),
+        suggestions=(),
+        errors=(),
+        source_states={"provincial": SourceState.LIVE},
+        source_fetched_at={"provincial": fetched},
+    )
+
+    groups = build_grouped_view(response, pyeongtaek)
+
+    assert [group.label for group in groups] == ["경기도 자치법규"]
 
 
 def test_stale_source_has_visible_retrieval_warning(result_factory):
@@ -384,14 +407,20 @@ def test_search_client_is_closed_in_the_same_event_loop(monkeypatch, tmp_path):
 
 
 def test_launcher_contract_is_loopback_and_conditional_install():
-    launcher = (Path(__file__).parents[1] / "run.bat").read_text(encoding="utf-8")
+    launcher_path = Path(__file__).parents[1] / "run.bat"
+    launcher_bytes = launcher_path.read_bytes()
+    launcher = launcher_bytes.decode("utf-8")
     folded = launcher.casefold()
 
+    assert b"\n" not in launcher_bytes.replace(b"\r\n", b"")
     assert 'cd /d "%~dp0"' in folded
+    assert "chcp 65001 >nul" in folded
     assert "py -3.12 -m venv .venv" in folded
     assert "import lawsearch, streamlit, httpx" in folded
     assert "-m pip install -e ." in folded
     assert "--server.address 127.0.0.1" in folded
     assert "--server.headless false" in folded
+    assert "--server.filewatchertype none" in folded
+    assert "앱을 시작하는 중입니다" in launcher
     assert "config.local.toml" in folded
     assert "pause" in folded

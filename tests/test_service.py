@@ -17,6 +17,33 @@ def empty_payload(source):
     return {wrapper: {"totalCnt": "0"}}
 
 
+def ordinance_payload(*authorities):
+    records = [
+        {
+            "자치법규일련번호": str(1_900_000 + index),
+            "자치법규명": f"{authority} 주차 조례",
+            "자치법규ID": str(2_040_000 + index),
+            "공포일자": "20250701",
+            "공포번호": str(index),
+            "지자체기관명": authority,
+            "자치법규종류": "조례",
+            "시행일자": "20250701",
+            "자치법규상세링크": f"/자치법규/{2_040_000 + index}",
+        }
+        for index, authority in enumerate(authorities, 1)
+    ]
+    return {
+        "OrdinSearch": {
+            "target": "ordin",
+            "키워드": "주차 대수",
+            "section": "bdyText",
+            "totalCnt": str(len(records)),
+            "page": "1",
+            "law": records,
+        }
+    }
+
+
 def test_nonregional_search_never_calls_ordinances(service_factory, parsed_plain):
     service, fake_api = service_factory()
 
@@ -37,6 +64,29 @@ def test_regional_search_calls_both_ordinance_levels_and_ranks_them_first(
         SourceGroup.MUNICIPAL,
         SourceGroup.PROVINCIAL,
     ]
+
+
+def test_provincial_results_exclude_subordinate_municipalities(
+    service_factory, parsed_pyeongtaek
+):
+    mixed = ordinance_payload("경기도", "경기도 광명시", "경기도 평택시")
+    service, _ = service_factory(
+        responses={
+            ("provincial", "주차 대수"): mixed,
+            ("provincial", "주차대수"): mixed,
+        }
+    )
+
+    response = run(
+        service.search(ParsedQuery("주차 대수", parsed_pyeongtaek.region))
+    )
+
+    authorities = {
+        item.authority
+        for item in response.results
+        if item.source is SourceGroup.PROVINCIAL
+    }
+    assert authorities == {"경기도"}
 
 
 def test_province_only_region_calls_no_municipal_source(service_factory):

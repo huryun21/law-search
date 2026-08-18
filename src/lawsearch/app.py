@@ -174,6 +174,11 @@ def _group_label(
 ) -> str:
     if source not in {SourceGroup.MUNICIPAL, SourceGroup.PROVINCIAL}:
         return _DEFAULT_LABELS[source]
+    if region is not None:
+        if source is SourceGroup.MUNICIPAL and region.municipality_name:
+            return f"{region.municipality_name} 자치법규"
+        if source is SourceGroup.PROVINCIAL:
+            return f"{region.province_name} 자치법규"
     region_name = next((item.region_name for item in results if item.region_name), None)
     if region_name:
         return f"{region_name} 자치법규"
