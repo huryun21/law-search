@@ -56,13 +56,14 @@ def test_nonregional_search_never_calls_ordinances(service_factory, parsed_plain
 
     run(service.search(parsed_plain))
 
-    assert fake_api.calls == {
+    assert {
         "laws_titles",
         "laws",
         "admin_rules_titles",
         "admin_rules",
         "terms",
-    }
+    } <= fake_api.calls
+    assert not {"municipal", "municipal_titles", "provincial", "provincial_titles"} & fake_api.calls
 
 
 def test_regional_search_calls_both_ordinance_levels_and_ranks_them_first(
@@ -264,9 +265,13 @@ def test_live_source_timestamp_is_captured_after_api_response(tmp_path):
 
     before = datetime(2026, 8, 11, 11, 59, tzinfo=UTC)
     received = datetime(2026, 8, 11, 12, 0, tzinfo=UTC)
-    readings = iter((before, received, received, received, received, received))
+    readings = iter((before, received))
+
+    def clock():
+        return next(readings, received)
+
     service = SearchService(
-        FakeApi(), CacheStore(tmp_path / "response-clock.db"), lambda: next(readings)
+        FakeApi(), CacheStore(tmp_path / "response-clock.db"), clock
     )
 
     response = run(service.search(ParsedQuery("주차")))
@@ -466,9 +471,11 @@ def test_exact_and_compact_duplicates_keep_best_quality(
 def test_title_search_is_separate_and_wins_duplicate_body_result(
     service_factory, parsed_plain, load_fixture
 ):
+    title_payload = load_fixture("law-single.json")
+    title_payload["LawSearch"]["law"]["법령명한글"] = "주차 단속법"
     service, fake_api = service_factory(
         responses={
-            ("laws_titles", "주차 단속"): load_fixture("law-single.json"),
+            ("laws_titles", "주차 단속"): title_payload,
         }
     )
 
@@ -478,6 +485,122 @@ def test_title_search_is_separate_and_wins_duplicate_body_result(
     assert ("laws_titles", "주차 단속") in fake_api.requests
     assert ("laws", "주차 단속") in fake_api.requests
     assert law.scope is SearchScope.TITLE
+
+
+def test_body_search_keeps_only_results_with_a_matching_article(
+    tmp_path, load_fixture
+):
+    from conftest import FakeApi
+
+    false_hit = dict(
+        load_fixture("law-single.json")["LawSearch"]["law"],
+        법령일련번호="273401",
+        법령명한글="자연공원법",
+        법령ID="001837",
+        법령상세링크="/법령/자연공원법",
+    )
+    true_hit = dict(
+        false_hit,
+        법령일련번호="273399",
+        법령명한글="건축법 시행령",
+        법령ID="004743",
+        법령구분명="대통령령",
+        법령상세링크="/법령/건축법시행령",
+    )
+    body_payload = {
+        "LawSearch": {
+            "target": "eflaw",
+            "키워드": "방화구획",
+            "section": "bdyText",
+            "totalCnt": "2",
+            "page": "1",
+            "law": [false_hit, true_hit],
+        }
+    }
+    loose_title_payload = {
+        "LawSearch": {
+            "target": "eflaw",
+            "키워드": "방화구획",
+            "section": "lawNm",
+            "totalCnt": "1",
+            "page": "1",
+            "law": false_hit,
+        }
+    }
+    detail_payloads = {
+        "001837": {
+            "법령": {
+                "조문": {
+                    "조문단위": {
+                        "조문번호": "18",
+                        "조문제목": "용도지구",
+                        "조문내용": "제18조(용도지구)",
+                        "항": {
+                            "항번호": "②",
+                            "항내용": "② 공원자연보존지구에서 허용되는 행위",
+                            "호": {
+                                "호번호": "2.",
+                                "호내용": "2. 공원시설의 설치",
+                                "목": {
+                                    "목번호": "사.",
+                                    "목내용": "사. 사방ㆍ호안ㆍ방화ㆍ방책 시설의 설치",
+                                },
+                            },
+                        },
+                    }
+                }
+            }
+        },
+        "004743": {
+            "법령": {
+                "조문": {
+                    "조문단위": {
+                        "조문번호": "46",
+                        "조문제목": "방화구획 등의 설치",
+                        "조문내용": "제46조(방화구획 등의 설치) 주요구조부를 방화구획으로 구획하여야 한다.",
+                    }
+                }
+            }
+        },
+    }
+
+    class ArticleApi(FakeApi):
+        async def fetch_detail(self, result):
+            self.calls.add("detail")
+            self.requests.append(("detail", result.uid))
+            return detail_payloads[result.uid]
+
+    responses = {
+        ("laws_titles", "방화구획"): loose_title_payload,
+        ("laws", "방화구획"): body_payload,
+        ("admin_rules", "방화구획"): empty_payload("admin_rules"),
+    }
+    api = ArticleApi(responses=responses)
+    service = SearchService(
+        api,
+        CacheStore(tmp_path / "verified-body.db"),
+        lambda: datetime(2026, 8, 18, tzinfo=UTC),
+    )
+
+    response = run(service.search(ParsedQuery("방화구획")))
+
+    assert "자연공원법" not in {item.title for item in response.results}
+    assert "건축법 시행령" in {item.title for item in response.results}
+
+
+def test_body_verification_failure_never_exposes_unverified_results(
+    service_factory, parsed_plain
+):
+    service, _ = service_factory(fail={"detail"})
+
+    response = run(service.search(parsed_plain))
+
+    assert response.results == ()
+    assert response.source_states == {
+        "laws": SourceState.ERROR,
+        "admin_rules": SourceState.ERROR,
+    }
+    assert {error.source for error in response.errors} == {"laws", "admin_rules"}
 
 
 def test_token_intersection_runs_only_after_both_variants_are_empty(

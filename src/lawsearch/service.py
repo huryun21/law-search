@@ -2,6 +2,7 @@ import asyncio
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime
+import re
 from typing import Any
 
 from lawsearch.api import ApiError, LawApiClient
@@ -26,6 +27,7 @@ from lawsearch.ranking import rank_results
 SourceOutcome = tuple[
     tuple[SearchResult, ...], SourceState, bool, datetime | None
 ]
+_DETAIL_VERIFICATION_CONCURRENCY = 4
 
 
 class SearchValidationError(ValueError):
@@ -58,8 +60,11 @@ class SearchService:
                 sources.append(("municipal", SourceGroup.MUNICIPAL))
             sources.append(("provincial", SourceGroup.PROVINCIAL))
 
+        detail_semaphore = asyncio.Semaphore(_DETAIL_VERIFICATION_CONCURRENCY)
         source_tasks = [
-            self._search_source(name, group, parsed, refresh, page)
+            self._search_source(
+                name, group, parsed, refresh, page, detail_semaphore
+            )
             for name, group in sources
         ]
         gathered = await asyncio.gather(
@@ -142,6 +147,7 @@ class SearchService:
         parsed: ParsedQuery,
         refresh: bool,
         page: int,
+        detail_semaphore: asyncio.Semaphore,
     ) -> tuple[
         tuple[SearchResult, ...], SourceState, SourceError | None, datetime | None
     ]:
@@ -193,16 +199,59 @@ class SearchService:
                     outcomes.append(outcome)
                 retained = _intersect_token_outcomes(token_outcomes)
 
-        state = _combine_state(outcomes, retained)
-        error = SourceError(name, f"{name} search failed") if any(
-            outcome[2] for outcome in outcomes
-        ) else None
+        retained, validation_failed = await self._verify_body_results(
+            retained,
+            parsed.keyword,
+            refresh,
+            detail_semaphore,
+        )
+        state = (
+            SourceState.ERROR
+            if validation_failed and not retained
+            else _combine_state(outcomes, retained)
+        )
+        error = (
+            SourceError(name, f"{name} search failed")
+            if validation_failed or any(outcome[2] for outcome in outcomes)
+            else None
+        )
         source_fetched_at = (
             min(item.fetched_at for item, _ in retained)
             if retained
             else _outcome_fetched_at(outcomes, state)
         )
         return tuple(item[0] for item in retained), state, error, source_fetched_at
+
+    async def _verify_body_results(
+        self,
+        retained: tuple[tuple[SearchResult, SourceState], ...],
+        keyword: str,
+        refresh: bool,
+        semaphore: asyncio.Semaphore,
+    ) -> tuple[tuple[tuple[SearchResult, SourceState], ...], bool]:
+        async def verify(
+            item: tuple[SearchResult, SourceState],
+        ) -> tuple[tuple[SearchResult, SourceState] | None, bool]:
+            result, state = item
+            if result.scope is SearchScope.TITLE and _title_matches_query(
+                result.title, keyword
+            ):
+                return item, False
+            async with semaphore:
+                detail = await self.load_contexts(result, keyword, refresh)
+            if detail.state is SourceState.ERROR:
+                return None, True
+            if not detail.contexts:
+                return None, False
+            if result.scope is SearchScope.TITLE:
+                return (replace(result, scope=SearchScope.BODY), state), False
+            return item, False
+
+        verified = await asyncio.gather(*(verify(item) for item in retained))
+        return (
+            tuple(item for item, _ in verified if item is not None),
+            any(failed for _, failed in verified),
+        )
 
     async def _search_variant(
         self,
@@ -358,6 +407,18 @@ def _result_preference(result: SearchResult) -> tuple[int, MatchQuality]:
         0 if result.scope is SearchScope.TITLE else 1,
         result.quality,
     )
+
+
+def _title_matches_query(title: str, keyword: str) -> bool:
+    compact_title = re.sub(r"[^\w]", "", title.casefold())
+    compact_keyword = re.sub(r"[^\w]", "", keyword.casefold())
+    if compact_keyword and compact_keyword in compact_title:
+        return True
+    tokens = tuple(
+        re.sub(r"[^\w]", "", token.casefold())
+        for token in keyword.split()
+    )
+    return len(tokens) >= 2 and all(token and token in compact_title for token in tokens)
 
 
 def _intersect_token_outcomes(
