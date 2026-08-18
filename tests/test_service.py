@@ -4,7 +4,14 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from lawsearch.cache import CacheStore, make_cache_key
-from lawsearch.models import MatchQuality, ParsedQuery, Region, SourceGroup, SourceState
+from lawsearch.models import (
+    MatchQuality,
+    ParsedQuery,
+    Region,
+    SearchScope,
+    SourceGroup,
+    SourceState,
+)
 from lawsearch.service import SearchService, SearchValidationError
 
 
@@ -49,7 +56,13 @@ def test_nonregional_search_never_calls_ordinances(service_factory, parsed_plain
 
     run(service.search(parsed_plain))
 
-    assert fake_api.calls == {"laws", "admin_rules", "terms"}
+    assert fake_api.calls == {
+        "laws_titles",
+        "laws",
+        "admin_rules_titles",
+        "admin_rules",
+        "terms",
+    }
 
 
 def test_regional_search_calls_both_ordinance_levels_and_ranks_them_first(
@@ -393,15 +406,17 @@ def test_live_sources_start_concurrently(tmp_path, parsed_plain):
                 self.ready.set()
             await asyncio.wait_for(self.ready.wait(), timeout=1)
 
-        async def search_laws(self, query, page=1):
-            if query == "주차 단속":
+        async def search_laws(self, query, page=1, *, title_only=False):
+            if query == "주차 단속" and title_only:
                 await self._wait_for_peer()
-            return await super().search_laws(query, page)
+            return await super().search_laws(query, page, title_only=title_only)
 
-        async def search_admin_rules(self, query, page=1):
-            if query == "주차 단속":
+        async def search_admin_rules(self, query, page=1, *, title_only=False):
+            if query == "주차 단속" and title_only:
                 await self._wait_for_peer()
-            return await super().search_admin_rules(query, page)
+            return await super().search_admin_rules(
+                query, page, title_only=title_only
+            )
 
     api = ConcurrentApi()
     service = SearchService(
@@ -420,7 +435,7 @@ def test_unexpected_source_failure_is_isolated(tmp_path, parsed_plain):
     from conftest import FakeApi
 
     class BrokenAdminApi(FakeApi):
-        async def search_admin_rules(self, query, page=1):
+        async def search_admin_rules(self, query, page=1, *, title_only=False):
             raise RuntimeError("internal diagnostic must not escape")
 
     service = SearchService(
@@ -446,6 +461,23 @@ def test_exact_and_compact_duplicates_keep_best_quality(
     law = next(item for item in response.results if item.uid == "001498")
     assert law.quality is MatchQuality.EXACT
     assert len([item for item in response.results if (item.source, item.uid) == (law.source, law.uid)]) == 1
+
+
+def test_title_search_is_separate_and_wins_duplicate_body_result(
+    service_factory, parsed_plain, load_fixture
+):
+    service, fake_api = service_factory(
+        responses={
+            ("laws_titles", "주차 단속"): load_fixture("law-single.json"),
+        }
+    )
+
+    response = run(service.search(parsed_plain))
+
+    law = next(item for item in response.results if item.uid == "001498")
+    assert ("laws_titles", "주차 단속") in fake_api.requests
+    assert ("laws", "주차 단속") in fake_api.requests
+    assert law.scope is SearchScope.TITLE
 
 
 def test_token_intersection_runs_only_after_both_variants_are_empty(
@@ -545,7 +577,9 @@ def test_detail_is_lazy_cached_refreshable_and_returns_bounded_contexts(
 
     first = run(service.load_contexts(result, "주차 단속"))
     second = run(service.load_contexts(result, "주차 단속"))
-    assert first.contexts == ("앞 문장. 주차 단속 근거 조문. 뒤 문장.",)
+    assert first.contexts == (
+        "제1조(단속 근거) — 앞 문장. 주차 단속 근거 조문. 뒤 문장.",
+    )
     assert second.state is SourceState.FRESH_CACHE
     assert [operation for operation, _ in api.requests].count("detail") == 1
 

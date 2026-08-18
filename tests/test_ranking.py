@@ -1,4 +1,6 @@
-from lawsearch.models import MatchQuality, SourceGroup
+from dataclasses import replace
+
+from lawsearch.models import MatchQuality, SearchScope, SourceGroup
 from lawsearch.ranking import rank_results
 
 
@@ -75,3 +77,34 @@ def test_current_then_effective_date_descending_then_title_are_deterministic(
         old,
         repealed,
     )
+
+
+def test_title_matches_precede_newer_body_only_results_by_phrase_relevance(
+    result_factory,
+):
+    exact_family = replace(
+        result_factory(SourceGroup.LAW, uid="parking", title="주차장법", effective="20200101"),
+        scope=SearchScope.TITLE,
+    )
+    contained_title = replace(
+        result_factory(
+            SourceGroup.LAW,
+            uid="special",
+            title="장애인 주차장 지원법",
+            effective="20260101",
+        ),
+        scope=SearchScope.TITLE,
+    )
+    body_only = replace(
+        result_factory(
+            SourceGroup.LAW,
+            uid="building",
+            title="건축법",
+            effective="20270101",
+        ),
+        scope=SearchScope.BODY,
+    )
+
+    assert rank_results(
+        [body_only, contained_title, exact_family], None, keyword="주차장"
+    ) == (exact_family, contained_title, body_only)

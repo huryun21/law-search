@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from lawsearch.models import MatchQuality, SourceGroup
+from lawsearch.models import MatchQuality, SearchScope, SourceGroup
 from lawsearch.normalize import ResponseShapeError, normalize_results
 
 
@@ -36,6 +36,18 @@ def test_multiple_laws_are_normalized_and_classified(load_fixture):
     ]
 
 
+def test_title_search_scope_is_preserved_on_normalized_results(load_fixture):
+    result = normalize_results(
+        load_fixture("law-single.json"),
+        SourceGroup.LAW,
+        MatchQuality.EXACT,
+        FETCHED_AT,
+        scope=SearchScope.TITLE,
+    )[0]
+
+    assert result.scope is SearchScope.TITLE
+
+
 def test_admin_rule_optional_dates_and_authority_are_normalized(load_fixture):
     result = normalize_results(load_fixture("admrul.json"), SourceGroup.ADMIN_RULE, MatchQuality.EXACT, FETCHED_AT)[0]
 
@@ -63,6 +75,46 @@ def test_official_ordinance_law_record_key_is_normalized(load_fixture):
     )[0]
 
     assert result.uid == "2047729"
+
+
+@pytest.mark.parametrize(
+    ("fixture", "source", "link_field", "api_link", "public_url"),
+    [
+        (
+            "law-single.json",
+            SourceGroup.LAW,
+            "법령상세링크",
+            "/DRF/lawService.do?target=eflaw&MST=273437&type=HTML&efYd=20260227",
+            "https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=273437",
+        ),
+        (
+            "ordin.json",
+            SourceGroup.MUNICIPAL,
+            "자치법규상세링크",
+            "/DRF/lawService.do?target=ordin&MST=2099063&type=HTML",
+            "https://www.law.go.kr/LSW/ordinInfoP.do?ordinSeq=2099063",
+        ),
+        (
+            "admrul.json",
+            SourceGroup.ADMIN_RULE,
+            "행정규칙상세링크",
+            "/DRF/lawService.do?target=admrul&ID=2100000250788&type=HTML",
+            "https://www.law.go.kr/LSW/admRulInfoP.do?admRulSeq=2100000250788",
+        ),
+    ],
+)
+def test_authenticated_drf_detail_links_become_public_reader_links(
+    load_fixture, fixture, source, link_field, api_link, public_url
+):
+    payload = load_fixture(fixture)
+    wrapper = next(iter(payload.values()))
+    record = wrapper.get("law") or wrapper.get("ordin") or wrapper.get("admrul")
+    record[link_field] = api_link
+
+    result = normalize_results(payload, source, MatchQuality.EXACT, FETCHED_AT)[0]
+
+    assert result.official_url == public_url
+    assert "/DRF/" not in result.official_url
 
 
 @pytest.mark.parametrize(

@@ -89,6 +89,25 @@ def test_search_requests_use_documented_current_body_search_parameters(pyeongtae
     ]
 
 
+def test_title_search_uses_documented_law_name_scope(pyeongtaek):
+    seen = []
+
+    def handler(request: httpx.Request):
+        seen.append(dict(request.url.params))
+        return httpx.Response(200, json={"LawSearch": {"totalCnt": "0"}})
+
+    client = LawApiClient("top-secret", httpx.MockTransport(handler))
+    run(client.search_laws("주차장", title_only=True))
+    run(client.search_admin_rules("주차장", title_only=True))
+    run(
+        client.search_ordinances(
+            "주차장", pyeongtaek, province_only=False, title_only=True
+        )
+    )
+
+    assert [request["search"] for request in seen] == ["1", "1", "1"]
+
+
 def test_municipal_search_requires_a_municipality_code():
     region = Region("경기도", None, "6410000")
     client = LawApiClient("top-secret", httpx.MockTransport(lambda request: None))

@@ -1,9 +1,9 @@
 from collections.abc import Mapping
 from datetime import date, datetime
 from typing import Any
-from urllib.parse import urljoin, urlparse
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
-from lawsearch.models import MatchQuality, SearchResult, SourceGroup
+from lawsearch.models import MatchQuality, SearchResult, SearchScope, SourceGroup
 
 
 class ResponseShapeError(ValueError):
@@ -26,6 +26,8 @@ def normalize_results(
     source: SourceGroup,
     quality: MatchQuality,
     fetched_at: datetime,
+    *,
+    scope: SearchScope = SearchScope.BODY,
 ) -> tuple[SearchResult, ...]:
     try:
         wrapper_name, record_names = _SOURCE_SHAPES[source]
@@ -40,7 +42,10 @@ def normalize_results(
         records = raw_records if isinstance(raw_records, list) else [raw_records]
         if not all(isinstance(record, Mapping) for record in records):
             raise TypeError
-        return tuple(_normalize_record(record, source, quality, fetched_at) for record in records)
+        return tuple(
+            _normalize_record(record, source, quality, fetched_at, scope)
+            for record in records
+        )
     except (KeyError, TypeError, ValueError) as exc:
         if isinstance(exc, ResponseShapeError):
             raise
@@ -52,6 +57,7 @@ def _normalize_record(
     source: SourceGroup,
     quality: MatchQuality,
     fetched_at: datetime,
+    scope: SearchScope,
 ) -> SearchResult:
     if source in {SourceGroup.LAW, SourceGroup.DECREE, SourceGroup.MINISTERIAL_RULE, SourceGroup.OTHER}:
         uid = _required(record, "법령ID", "법령일련번호")
@@ -95,8 +101,9 @@ def _normalize_record(
         promulgation_date=promulgation,
         effective_date=_parse_date(_optional(record, "시행일자")),
         is_current=current,
-        official_url=_official_url(link),
+        official_url=_official_url(link, normalized_source),
         fetched_at=fetched_at,
+        scope=scope,
     )
 
 
@@ -135,11 +142,41 @@ def _classify_law(category: str) -> SourceGroup:
     return SourceGroup.OTHER
 
 
-def _official_url(value: str) -> str:
+def _official_url(value: str, source: SourceGroup) -> str:
     url = urljoin("https://www.law.go.kr/", value)
     parsed = urlparse(url)
     if parsed.scheme != "https" or parsed.hostname != "www.law.go.kr":
         raise ValueError
+    if parsed.path.casefold() == "/drf/lawservice.do":
+        parameters = dict(parse_qsl(parsed.query))
+        if source in {
+            SourceGroup.LAW,
+            SourceGroup.DECREE,
+            SourceGroup.MINISTERIAL_RULE,
+            SourceGroup.OTHER,
+        }:
+            path, public_name, identifier = (
+                "/LSW/lsInfoP.do",
+                "lsiSeq",
+                parameters.get("MST"),
+            )
+        elif source in {SourceGroup.MUNICIPAL, SourceGroup.PROVINCIAL}:
+            path, public_name, identifier = (
+                "/LSW/ordinInfoP.do",
+                "ordinSeq",
+                parameters.get("MST"),
+            )
+        else:
+            path, public_name, identifier = (
+                "/LSW/admRulInfoP.do",
+                "admRulSeq",
+                parameters.get("ID"),
+            )
+        if identifier is None or not identifier.isdigit():
+            raise ValueError
+        return urlunparse(
+            ("https", "www.law.go.kr", path, "", urlencode({public_name: identifier}), "")
+        )
     return url
 
 

@@ -67,7 +67,17 @@ class FakeApi:
         self.requests: list[tuple[str, str]] = []
         self.fail = set(fail)
         self.responses = responses or {}
-        self.detail_payload = {"body": "앞 문장. 주차 단속 근거 조문. 뒤 문장."}
+        self.detail_payload = {
+            "법령": {
+                "조문": {
+                    "조문단위": {
+                        "조문번호": "1",
+                        "조문제목": "단속 근거",
+                        "조문내용": "앞 문장. 주차 단속 근거 조문. 뒤 문장.",
+                    }
+                }
+            }
+        }
 
     def _search(self, operation: str, query: str, fixture: str):
         self.calls.add(operation)
@@ -77,16 +87,30 @@ class FakeApi:
         configured = self.responses.get((operation, query))
         if configured is not None:
             return deepcopy(configured)
+        if operation.endswith("_titles"):
+            wrapper = {
+                "laws_titles": "LawSearch",
+                "admin_rules_titles": "AdmRulSearch",
+                "municipal_titles": "OrdinSearch",
+                "provincial_titles": "OrdinSearch",
+            }[operation]
+            return {wrapper: {"totalCnt": "0"}}
         return load_fixture(fixture)
 
-    async def search_laws(self, query: str, page: int = 1):
-        return self._search("laws", query, "law-multiple.json")
+    async def search_laws(self, query: str, page: int = 1, *, title_only=False):
+        operation = "laws_titles" if title_only else "laws"
+        return self._search(operation, query, "law-multiple.json")
 
-    async def search_admin_rules(self, query: str, page: int = 1):
-        return self._search("admin_rules", query, "admrul.json")
+    async def search_admin_rules(self, query: str, page: int = 1, *, title_only=False):
+        operation = "admin_rules_titles" if title_only else "admin_rules"
+        return self._search(operation, query, "admrul.json")
 
-    async def search_ordinances(self, query, region, province_only, page=1):
+    async def search_ordinances(
+        self, query, region, province_only, page=1, *, title_only=False
+    ):
         operation = "provincial" if province_only else "municipal"
+        if title_only:
+            operation += "_titles"
         fixture = "ordin-provincial.json" if province_only else "ordin.json"
         return self._search(operation, query, fixture)
 

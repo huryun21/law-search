@@ -17,6 +17,7 @@ from lawsearch.app import (
 from lawsearch.models import (
     ParsedQuery,
     SearchResponse,
+    SearchScope,
     SourceError,
     SourceGroup,
     SourceState,
@@ -141,6 +142,96 @@ def test_decree_only_response_does_not_invent_empty_law_group(result_factory):
     )
 
     assert [group.label for group in build_grouped_view(response)] == ["대통령령"]
+
+
+def test_body_only_hits_are_kept_in_a_collapsed_additional_group(result_factory):
+    title_hit = replace(
+        result_factory(SourceGroup.LAW, uid="parking", title="주차장법"),
+        scope=SearchScope.TITLE,
+    )
+    body_hit = replace(
+        result_factory(SourceGroup.LAW, uid="building", title="건축법"),
+        scope=SearchScope.BODY,
+    )
+    response = SearchResponse(
+        results=(title_hit, body_hit),
+        suggestions=(),
+        errors=(),
+        source_states={"laws": SourceState.LIVE},
+        source_fetched_at={"laws": datetime(2026, 8, 11, tzinfo=UTC)},
+    )
+
+    groups = build_grouped_view(response)
+
+    assert [(group.label, [item.uid for item in group.results]) for group in groups] == [
+        ("법률", ["parking"]),
+        ("법률 · 본문 관련 추가 결과", ["building"]),
+    ]
+    assert [group.expanded for group in groups] == [True, False]
+
+
+def test_all_title_match_groups_precede_any_body_only_group(result_factory):
+    title_law = replace(
+        result_factory(SourceGroup.LAW, uid="law", title="주차장법"),
+        scope=SearchScope.TITLE,
+    )
+    body_law = replace(
+        result_factory(SourceGroup.LAW, uid="building", title="건축법"),
+        scope=SearchScope.BODY,
+    )
+    title_decree = replace(
+        result_factory(SourceGroup.DECREE, uid="decree", title="주차장법 시행령"),
+        scope=SearchScope.TITLE,
+    )
+    fetched = datetime(2026, 8, 11, tzinfo=UTC)
+    response = SearchResponse(
+        results=(title_law, body_law, title_decree),
+        suggestions=(),
+        errors=(),
+        source_states={"laws": SourceState.LIVE},
+        source_fetched_at={"laws": fetched},
+    )
+
+    groups = build_grouped_view(response)
+
+    assert [group.label for group in groups] == [
+        "법률",
+        "대통령령",
+        "법률 · 본문 관련 추가 결과",
+    ]
+
+
+def test_regional_body_results_stay_above_national_title_results(
+    result_factory, pyeongtaek
+):
+    municipal_body = replace(
+        result_factory(
+            SourceGroup.MUNICIPAL,
+            uid="local",
+            title="평택시 주차장 설치 및 관리 조례",
+        ),
+        scope=SearchScope.BODY,
+    )
+    national_title = replace(
+        result_factory(SourceGroup.LAW, uid="law", title="주차장법"),
+        scope=SearchScope.TITLE,
+    )
+    fetched = datetime(2026, 8, 11, tzinfo=UTC)
+    response = SearchResponse(
+        results=(national_title, municipal_body),
+        suggestions=(),
+        errors=(),
+        source_states={
+            "municipal": SourceState.LIVE,
+            "laws": SourceState.LIVE,
+        },
+        source_fetched_at={"municipal": fetched, "laws": fetched},
+    )
+
+    groups = build_grouped_view(response, pyeongtaek)
+
+    assert [group.label for group in groups] == ["평택시 자치법규", "법률"]
+    assert groups[0].expanded is True
 
 
 def test_empty_ordinance_labels_come_from_selected_region(pyeongtaek):

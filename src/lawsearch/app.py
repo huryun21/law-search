@@ -19,6 +19,7 @@ from lawsearch.models import (
     Region,
     SearchResponse,
     SearchResult,
+    SearchScope,
     SourceGroup,
     SourceState,
 )
@@ -82,6 +83,7 @@ class ResultGroupView:
     state: SourceState
     status_message: str
     fetched_at: datetime | None
+    expanded: bool
 
 
 def build_grouped_view(
@@ -90,29 +92,93 @@ def build_grouped_view(
     """Build source groups without depending on Streamlit state."""
     grouped: list[tuple[int, ResultGroupView]] = []
     represented_sources: set[str] = set()
+    regional_sources = {SourceGroup.MUNICIPAL, SourceGroup.PROVINCIAL}
+    has_national_title_results = any(
+        item.scope is SearchScope.TITLE and item.source not in regional_sources
+        for item in response.results
+    )
     for priority, source in enumerate(_SOURCE_ORDER):
-        results = tuple(item for item in response.results if item.source is source)
-        if not results:
+        source_results = tuple(
+            item for item in response.results if item.source is source
+        )
+        if not source_results:
             continue
         source_key = _SOURCE_KEYS[source]
         state = response.source_states.get(source_key, SourceState.EMPTY)
         fetched_at = response.source_fetched_at.get(
-            source_key, min(item.fetched_at for item in results)
+            source_key, min(item.fetched_at for item in source_results)
         )
-        grouped.append(
-            (
-                priority,
-                ResultGroupView(
-                    label=_group_label(source, results, region),
-                    results=results,
-                    state=state,
-                    status_message=_status_message(state, fetched_at),
-                    fetched_at=fetched_at,
-                ),
+        label = _group_label(source, source_results, region)
+        title_results = tuple(
+            item for item in source_results if item.scope is SearchScope.TITLE
+        )
+        body_results = tuple(
+            item for item in source_results if item.scope is SearchScope.BODY
+        )
+        is_regional_source = region is not None and source in regional_sources
+        if region is not None:
+            title_priority = (
+                priority * 2
+                if is_regional_source
+                else 4 + priority - len(regional_sources)
             )
-        )
+        else:
+            title_priority = priority
+        if title_results:
+            grouped.append(
+                (
+                    title_priority,
+                    ResultGroupView(
+                        label=label,
+                        results=title_results,
+                        state=state,
+                        status_message=_status_message(state, fetched_at),
+                        fetched_at=fetched_at,
+                        expanded=True,
+                    ),
+                )
+            )
+        if body_results:
+            is_additional = (
+                bool(title_results)
+                if is_regional_source
+                else has_national_title_results
+            )
+            if is_regional_source:
+                body_priority = title_priority + 1
+            elif region is not None and is_additional:
+                national_source_count = len(_SOURCE_ORDER) - len(regional_sources)
+                body_priority = title_priority + national_source_count
+            else:
+                body_priority = (
+                    len(_SOURCE_ORDER) + priority
+                    if is_additional
+                    else title_priority
+                )
+            grouped.append(
+                (
+                    body_priority,
+                    ResultGroupView(
+                        label=(
+                            f"{label} · 본문 관련 추가 결과"
+                            if is_additional
+                            else label
+                        ),
+                        results=body_results,
+                        state=state,
+                        status_message=_status_message(state, fetched_at),
+                        fetched_at=fetched_at,
+                        expanded=not is_additional,
+                    ),
+                )
+            )
         represented_sources.add(source_key)
-    source_priority = {"municipal": 0, "provincial": 1, "laws": 2, "admin_rules": 5}
+    source_priority = {
+        "municipal": 0,
+        "provincial": 2,
+        "laws": 4,
+        "admin_rules": 10,
+    }
     for source_key in ("municipal", "provincial", "laws", "admin_rules"):
         if source_key not in response.source_states or source_key in represented_sources:
             continue
@@ -127,6 +193,7 @@ def build_grouped_view(
                     state=state,
                     status_message=_status_message(state, fetched_at),
                     fetched_at=fetched_at,
+                    expanded=False,
                 ),
             )
         )
@@ -348,7 +415,9 @@ def _render_response(
     for message in build_error_messages(response):
         st.error(message)
     for group in build_grouped_view(response, parsed.region):
-        with st.expander(f"{group.label} ({len(group.results)})", expanded=bool(group.results)):
+        with st.expander(
+            f"{group.label} ({len(group.results)})", expanded=group.expanded
+        ):
             if group.state is SourceState.STALE_FALLBACK:
                 st.warning(group.status_message)
             elif group.state is SourceState.ERROR:

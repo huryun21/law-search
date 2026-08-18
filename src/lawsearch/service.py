@@ -13,6 +13,7 @@ from lawsearch.models import (
     ParsedQuery,
     SearchResponse,
     SearchResult,
+    SearchScope,
     SourceError,
     SourceGroup,
     SourceState,
@@ -92,7 +93,7 @@ class SearchService:
             suggestions = suggestion_outcome
 
         return SearchResponse(
-            results=rank_results(_deduplicate(results), parsed.region),
+            results=rank_results(_deduplicate(results), parsed.region, parsed.keyword),
             suggestions=suggestions,
             errors=tuple(errors),
             source_states=states,
@@ -144,8 +145,20 @@ class SearchService:
     ) -> tuple[
         tuple[SearchResult, ...], SourceState, SourceError | None, datetime | None
     ]:
-        outcomes = []
-        for variant in build_query_variants(parsed.keyword):
+        variants = build_query_variants(parsed.keyword)
+        outcomes = [
+            await self._search_variant(
+                name,
+                group,
+                variants[0].query,
+                variants[0].quality,
+                parsed,
+                refresh,
+                page,
+                SearchScope.TITLE,
+            )
+        ]
+        for variant in variants:
             outcomes.append(
                 await self._search_variant(
                     name,
@@ -155,6 +168,7 @@ class SearchService:
                     parsed,
                     refresh,
                     page,
+                    SearchScope.BODY,
                 )
             )
 
@@ -173,6 +187,7 @@ class SearchService:
                         parsed,
                         refresh,
                         page,
+                        SearchScope.BODY,
                     )
                     token_outcomes.append(outcome)
                     outcomes.append(outcome)
@@ -198,14 +213,20 @@ class SearchService:
         parsed: ParsedQuery,
         refresh: bool,
         page: int,
+        scope: SearchScope,
     ) -> SourceOutcome:
         now = self._clock()
         region_codes = _region_codes(parsed, name)
-        key = make_cache_key(name, query, region_codes, page)
+        cache_source = f"{name}_titles" if scope is SearchScope.TITLE else name
+        key = make_cache_key(cache_source, query, region_codes, page)
         cached = self._cache.get(key, now)
         if cached is not None and cached.is_fresh and not refresh:
             normalized = normalize_results(
-                cached.payload, group, quality, cached.fetched_at
+                cached.payload,
+                group,
+                quality,
+                cached.fetched_at,
+                scope=scope,
             )
             return (
                 _filter_provincial_results(name, parsed, normalized),
@@ -214,14 +235,22 @@ class SearchService:
                 cached.fetched_at,
             )
         try:
-            payload = await self._call_source(name, query, parsed, page)
+            payload = await self._call_source(
+                name, query, parsed, page, title_only=scope is SearchScope.TITLE
+            )
             fetched_at = self._clock()
-            normalized = normalize_results(payload, group, quality, fetched_at)
+            normalized = normalize_results(
+                payload, group, quality, fetched_at, scope=scope
+            )
         except (ApiError, ResponseShapeError):
             if cached is None:
                 return (), SourceState.ERROR, True, None
             normalized = normalize_results(
-                cached.payload, group, quality, cached.fetched_at
+                cached.payload,
+                group,
+                quality,
+                cached.fetched_at,
+                scope=scope,
             )
             return (
                 _filter_provincial_results(name, parsed, normalized),
@@ -239,12 +268,20 @@ class SearchService:
         )
 
     async def _call_source(
-        self, name: str, query: str, parsed: ParsedQuery, page: int
+        self,
+        name: str,
+        query: str,
+        parsed: ParsedQuery,
+        page: int,
+        *,
+        title_only: bool,
     ) -> dict[str, Any]:
         if name == "laws":
-            return await self._api.search_laws(query, page)
+            return await self._api.search_laws(query, page, title_only=title_only)
         if name == "admin_rules":
-            return await self._api.search_admin_rules(query, page)
+            return await self._api.search_admin_rules(
+                query, page, title_only=title_only
+            )
         if parsed.region is None:
             raise SearchValidationError("지역 없는 자치법규 검색은 허용되지 않습니다.")
         return await self._api.search_ordinances(
@@ -252,6 +289,7 @@ class SearchService:
             parsed.region,
             province_only=name == "provincial",
             page=page,
+            title_only=title_only,
         )
 
     async def _suggest(self, keyword: str, refresh: bool) -> tuple[str, ...]:
@@ -295,7 +333,7 @@ def _deduplicate(results: list[SearchResult]) -> tuple[SearchResult, ...]:
     for result in results:
         key = (result.source, result.uid)
         current = best.get(key)
-        if current is None or result.quality < current.quality:
+        if current is None or _result_preference(result) < _result_preference(current):
             best[key] = result
     return tuple(best.values())
 
@@ -308,9 +346,18 @@ def _retain_best_results(
         for result in results:
             key = (result.source, result.uid)
             retained = best.get(key)
-            if retained is None or result.quality < retained[0].quality:
+            if retained is None or _result_preference(result) < _result_preference(
+                retained[0]
+            ):
                 best[key] = (result, state)
     return tuple(best.values())
+
+
+def _result_preference(result: SearchResult) -> tuple[int, MatchQuality]:
+    return (
+        0 if result.scope is SearchScope.TITLE else 1,
+        result.quality,
+    )
 
 
 def _intersect_token_outcomes(

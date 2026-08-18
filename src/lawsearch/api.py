@@ -58,18 +58,22 @@ class LawApiClient:
             raise ApiError(f"{safe_operation} 응답을 처리할 수 없습니다.")
         return _strip_response_credentials(payload)
 
-    async def search_laws(self, query: str, page: int = 1) -> dict[str, Any]:
+    async def search_laws(
+        self, query: str, page: int = 1, *, title_only: bool = False
+    ) -> dict[str, Any]:
         return await self._request_json(
             "lawSearch.do",
             "현행 법령 검색",
-            self._search_params("eflaw", query, page, nw="3"),
+            self._search_params("eflaw", query, page, nw="3", title_only=title_only),
         )
 
-    async def search_admin_rules(self, query: str, page: int = 1) -> dict[str, Any]:
+    async def search_admin_rules(
+        self, query: str, page: int = 1, *, title_only: bool = False
+    ) -> dict[str, Any]:
         return await self._request_json(
             "lawSearch.do",
             "행정규칙 검색",
-            self._search_params("admrul", query, page, nw="1"),
+            self._search_params("admrul", query, page, nw="1", title_only=title_only),
         )
 
     async def search_ordinances(
@@ -78,8 +82,12 @@ class LawApiClient:
         region: Region,
         province_only: bool,
         page: int = 1,
+        *,
+        title_only: bool = False,
     ) -> dict[str, Any]:
-        params = self._search_params("ordin", query, page, nw="1")
+        params = self._search_params(
+            "ordin", query, page, nw="1", title_only=title_only
+        )
         params["org"] = region.org
         if not province_only:
             if region.sborg is None:
@@ -128,7 +136,9 @@ class LawApiClient:
         )
 
     @staticmethod
-    def _search_params(target: str, query: str, page: int, *, nw: str) -> dict[str, str]:
+    def _search_params(
+        target: str, query: str, page: int, *, nw: str, title_only: bool = False
+    ) -> dict[str, str]:
         return {
             "target": target,
             "type": "JSON",
@@ -136,7 +146,7 @@ class LawApiClient:
             "display": "100",
             "page": str(page),
             "nw": nw,
-            "search": "2",
+            "search": "1" if title_only else "2",
         }
 
     @classmethod

@@ -20,6 +20,11 @@ class MatchQuality(IntEnum):
     ALL_TERMS = 2
 
 
+class SearchScope(str, Enum):
+    TITLE = "title"
+    BODY = "body"
+
+
 @dataclass(frozen=True)
 class Region:
     province_name: str
@@ -66,6 +71,7 @@ class SearchResult:
     is_current: bool
     official_url: str
     fetched_at: datetime
+    scope: SearchScope = SearchScope.BODY
 
 
 class SourceState(str, Enum):
