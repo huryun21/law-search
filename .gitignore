@@ -4,8 +4,10 @@
 config.local.toml
 data/*.db*
 .pytest_cache/
+.pytest-basetemp/
 __pycache__/
 *.egg-info/
 *.log
 task-7-report.md
 /work/
+.superpowers/

@@ -2,6 +2,8 @@
 
 국가법령정보센터 공동활용 API에서 현행 법령, 행정규칙, 법령용어와 선택 지역의 자치법규를 함께 찾는 Windows용 로컬 Streamlit 앱입니다. AI 요약이나 법률적 판단은 제공하지 않습니다.
 
+Claude Code로 이어서 작업할 때는 먼저 [인수인계 문서](docs/CLAUDE_HANDOFF.md)와 [작업 규칙](CLAUDE.md)을 읽으십시오. 이 문서에는 사용자 요구사항, 해결한 정확도 오류, 아직 구현하지 않은 UI·배포 작업이 구분되어 있습니다.
+
 ## 설치 및 설정
 
 - Windows와 Python 3.11 이상이 필요합니다. `run.bat`은 Python 3.12 런처를 우선 사용합니다.
@@ -9,7 +11,7 @@
 - 프로젝트 루트에 다음 내용의 `config.local.toml`을 만드십시오. 이 파일과 `data/cache.db`는 Git에서 제외됩니다.
 
 ```toml
-api_key_file = "G:\\내 드라이브\\01_AI개발\\00_인증정보\\my_api_keys.txt"
+api_key_file = "G:\\path\\to\\external-law-api-key.txt"
 cache_path = "data/cache.db"
 ```
 

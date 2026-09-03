@@ -79,7 +79,7 @@ korean-law-search/
 - Produces: `Settings(api_key_file: Path, cache_path: Path)`
 - Produces: `load_settings(project_root: Path, environ: Mapping[str, str] | None = None) -> Settings`
 - Produces: `load_api_key(path: Path) -> str`
-- Consumes: external credential file selected from `G:\내 드라이브\01_AI개발\00_인증정보`; its value is never printed
+- Consumes: an external credential file selected locally; its value is never printed
 
 - [ ] **Step 1: Inspect only credential filenames and redacted file shape**
 
@@ -925,10 +925,9 @@ Expected: all unit tests pass; live tests skip unless explicitly enabled; no war
 git diff --check
 git status --short
 git grep -n -I -E "OC=|approved-key|top-secret" -- ':!tests/**' ':!docs/**'
-Get-ChildItem -Recurse -File | Where-Object { $_.FullName -notmatch '\\.git\\|\\.venv\\' } | Select-String -SimpleMatch -Pattern 'G:\내 드라이브\01_AI개발\00_인증정보'
 ```
 
-Expected: no whitespace errors; only intended tracked files; no credential values; the authorized directory appears only in ignored local config or user documentation if explicitly needed.
+Expected: no whitespace errors; only intended tracked files; no credential values; no user-specific credential directory is committed.
 
 - [ ] **Step 7: Perform manual acceptance checks**
 
