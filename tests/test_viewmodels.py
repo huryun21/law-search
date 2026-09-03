@@ -1,12 +1,16 @@
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from lawsearch.viewmodels import (
+    CardView,
     build_error_messages,
     build_grouped_view,
+    card_rows,
+    card_view,
     detail_session_key,
     fully_qualified_region_name,
     is_official_url,
+    result_key,
 )
 from lawsearch.models import (
     SearchResponse,
@@ -325,3 +329,66 @@ def test_source_errors_are_named_and_diagnostics_are_redacted():
         "법령용어: 조회하지 못했습니다. 새로고침으로 다시 시도해 주세요.",
     )
     assert all("diagnostic" not in message for message in messages)
+
+
+def test_result_key_combines_source_and_uid(result_factory):
+    assert result_key(result_factory(SourceGroup.LAW, uid="001498")) == "law:001498"
+
+
+def test_card_view_exposes_verified_match_line(result_factory):
+    result = replace(
+        result_factory(SourceGroup.LAW, uid="004743", title="건축법 시행령"),
+        scope=SearchScope.BODY,
+        match_context="제46조(방화구획 등의 설치) — 주요구조부를 방화구획으로 구획한다",
+    )
+
+    card = card_view(result)
+
+    assert card.key == "law:004743"
+    assert card.match_kind == "본문 일치"
+    assert card.match_line == "제46조(방화구획 등의 설치) — 주요구조부를 방화구획으로 구획한다"
+
+
+def test_card_view_for_title_match_has_no_match_line(result_factory):
+    card = card_view(replace(result_factory(SourceGroup.LAW), scope=SearchScope.TITLE))
+
+    assert card.match_kind == "제목 일치"
+    assert card.match_line is None
+
+
+def test_card_view_meta_fields_include_currency_and_dates(result_factory):
+    result = replace(
+        result_factory(SourceGroup.DECREE, title="주차장법 시행령", current=False),
+        promulgation_date=date(2025, 1, 2),
+        effective_date=date(2025, 7, 1),
+        authority="국토교통부",
+    )
+
+    card = card_view(result)
+
+    assert card.meta_fields == (
+        "decree",
+        "국토교통부",
+        "연혁",
+        "공포 2025-01-02",
+        "시행 2025-07-01",
+    )
+
+
+def test_card_view_drops_non_official_url(result_factory):
+    result = replace(result_factory(SourceGroup.LAW), official_url="http://law.go.kr/x")
+
+    assert card_view(result).official_url is None
+
+
+def test_card_rows_batch_two_per_row_in_result_order(result_factory):
+    results = tuple(result_factory(SourceGroup.LAW, uid=str(index)) for index in range(5))
+
+    rows = card_rows(results, columns=2)
+
+    assert [len(row) for row in rows] == [2, 2, 1]
+    assert [[card.key for card in row] for row in rows] == [
+        ["law:0", "law:1"],
+        ["law:2", "law:3"],
+        ["law:4"],
+    ]

@@ -7,6 +7,7 @@ into the groups, cards, sidebar tree, and compare options the UI renders.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from urllib.parse import urlsplit
@@ -261,3 +262,46 @@ def _status_message(state: SourceState, fetched_at: datetime | None) -> str:
             f"조회 시각: {format_timestamp(fetched_at)}"
         )
     return _STATE_MESSAGES[state]
+
+
+def result_key(result: SearchResult) -> str:
+    return f"{result.source.value}:{result.uid}"
+
+
+@dataclass(frozen=True)
+class CardView:
+    key: str
+    title: str
+    match_kind: str
+    match_line: str | None
+    official_url: str | None
+    meta_fields: tuple[str, ...]
+
+
+def card_view(result: SearchResult) -> CardView:
+    fields = [result.category]
+    if result.authority:
+        fields.append(result.authority)
+    fields.append("현행" if result.is_current else "연혁")
+    if result.promulgation_date:
+        fields.append(f"공포 {result.promulgation_date.isoformat()}")
+    if result.effective_date:
+        fields.append(f"시행 {result.effective_date.isoformat()}")
+    return CardView(
+        key=result_key(result),
+        title=result.title,
+        match_kind="제목 일치" if result.scope is SearchScope.TITLE else "본문 일치",
+        match_line=result.match_context,
+        official_url=result.official_url if is_official_url(result.official_url) else None,
+        meta_fields=tuple(fields),
+    )
+
+
+def card_rows(
+    results: Iterable[SearchResult], columns: int = 2
+) -> tuple[tuple[CardView, ...], ...]:
+    cards = [card_view(result) for result in results]
+    return tuple(
+        tuple(cards[start : start + columns])
+        for start in range(0, len(cards), columns)
+    )
