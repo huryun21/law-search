@@ -305,3 +305,75 @@ def card_rows(
         tuple(cards[start : start + columns])
         for start in range(0, len(cards), columns)
     )
+
+
+_SIDEBAR_LOCAL_LABEL = "자치법규"
+_SIDEBAR_NATIONAL_LABEL = "상위법령"
+_LOCAL_SOURCES = (SourceGroup.MUNICIPAL, SourceGroup.PROVINCIAL)
+_SIDEBAR_GROUP_LABELS = {
+    SourceGroup.LAW: "법률",
+    SourceGroup.DECREE: "대통령령(시행령)",
+    SourceGroup.MINISTERIAL_RULE: "총리령·부령(시행규칙)",
+    SourceGroup.ADMIN_RULE: "행정규칙",
+    SourceGroup.OTHER: "기타 법령",
+}
+
+
+@dataclass(frozen=True)
+class SidebarEntry:
+    key: str
+    title: str
+
+
+@dataclass(frozen=True)
+class SidebarGroup:
+    label: str
+    count: int
+    entries: tuple[SidebarEntry, ...]
+
+
+@dataclass(frozen=True)
+class SidebarSection:
+    label: str
+    groups: tuple[SidebarGroup, ...]
+
+
+def sidebar_sections(
+    response: SearchResponse, region: Region | None = None
+) -> tuple[SidebarSection, ...]:
+    """Navigation tree over the ranked results. Never hides a result."""
+    section_order: list[str] = []
+    grouped: dict[str, dict[SourceGroup, list[SearchResult]]] = {}
+    for result in response.results:
+        section_label = (
+            _SIDEBAR_LOCAL_LABEL
+            if result.source in _LOCAL_SOURCES
+            else _SIDEBAR_NATIONAL_LABEL
+        )
+        if section_label not in grouped:
+            grouped[section_label] = {}
+            section_order.append(section_label)
+        grouped[section_label].setdefault(result.source, []).append(result)
+
+    sections: list[SidebarSection] = []
+    for section_label in section_order:
+        groups = tuple(
+            SidebarGroup(
+                label=_sidebar_group_label(source, items, region),
+                count=len(items),
+                entries=tuple(
+                    SidebarEntry(result_key(item), item.title) for item in items
+                ),
+            )
+            for source, items in grouped[section_label].items()
+        )
+        sections.append(SidebarSection(section_label, groups))
+    return tuple(sections)
+
+
+def _sidebar_group_label(
+    source: SourceGroup, items: list[SearchResult], region: Region | None
+) -> str:
+    if source in _LOCAL_SOURCES:
+        return _group_label(source, tuple(items), region)
+    return _SIDEBAR_GROUP_LABELS[source]

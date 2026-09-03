@@ -3,6 +3,7 @@ from datetime import UTC, date, datetime
 
 from lawsearch.viewmodels import (
     CardView,
+    SidebarEntry,
     build_error_messages,
     build_grouped_view,
     card_rows,
@@ -11,6 +12,7 @@ from lawsearch.viewmodels import (
     fully_qualified_region_name,
     is_official_url,
     result_key,
+    sidebar_sections,
 )
 from lawsearch.models import (
     SearchResponse,
@@ -392,3 +394,84 @@ def test_card_rows_batch_two_per_row_in_result_order(result_factory):
         ["law:2", "law:3"],
         ["law:4"],
     ]
+
+
+_FETCHED = datetime(2026, 8, 11, tzinfo=UTC)
+
+
+def _response(results, states):
+    return SearchResponse(
+        results=results,
+        suggestions=(),
+        errors=(),
+        source_states=states,
+        source_fetched_at={name: _FETCHED for name in states},
+    )
+
+
+def test_sidebar_sections_lead_with_local_law_when_region_selected(
+    result_factory, pyeongtaek
+):
+    results = (
+        replace(
+            result_factory(SourceGroup.MUNICIPAL, uid="m1", title="평택시 주차장 조례"),
+            scope=SearchScope.BODY,
+        ),
+        replace(
+            result_factory(SourceGroup.LAW, uid="l1", title="주차장법"),
+            scope=SearchScope.TITLE,
+        ),
+        replace(
+            result_factory(SourceGroup.DECREE, uid="d1", title="주차장법 시행령"),
+            scope=SearchScope.TITLE,
+        ),
+    )
+    sections = sidebar_sections(
+        _response(results, {"municipal": SourceState.LIVE, "laws": SourceState.LIVE}),
+        pyeongtaek,
+    )
+
+    assert [section.label for section in sections] == ["자치법규", "상위법령"]
+    national = sections[1]
+    assert [(group.label, group.count) for group in national.groups] == [
+        ("법률", 1),
+        ("대통령령(시행령)", 1),
+    ]
+    assert national.groups[0].entries == (SidebarEntry("law:l1", "주차장법"),)
+
+
+def test_sidebar_sections_lead_with_national_without_region(result_factory):
+    results = (
+        replace(
+            result_factory(SourceGroup.LAW, uid="l1", title="주차장법"),
+            scope=SearchScope.TITLE,
+        ),
+    )
+    sections = sidebar_sections(_response(results, {"laws": SourceState.LIVE}))
+
+    assert [section.label for section in sections] == ["상위법령"]
+
+
+def test_sidebar_entry_count_equals_result_count(result_factory, pyeongtaek):
+    results = (
+        replace(result_factory(SourceGroup.MUNICIPAL, uid="m1"), scope=SearchScope.BODY),
+        replace(result_factory(SourceGroup.PROVINCIAL, uid="p1"), scope=SearchScope.BODY),
+        replace(result_factory(SourceGroup.LAW, uid="l1"), scope=SearchScope.TITLE),
+        replace(result_factory(SourceGroup.LAW, uid="l2"), scope=SearchScope.BODY),
+        replace(result_factory(SourceGroup.ADMIN_RULE, uid="a1"), scope=SearchScope.BODY),
+    )
+    sections = sidebar_sections(
+        _response(
+            results,
+            {
+                "municipal": SourceState.LIVE,
+                "provincial": SourceState.LIVE,
+                "laws": SourceState.LIVE,
+                "admin_rules": SourceState.LIVE,
+            },
+        ),
+        pyeongtaek,
+    )
+
+    total = sum(len(group.entries) for section in sections for group in section.groups)
+    assert total == len(results)
