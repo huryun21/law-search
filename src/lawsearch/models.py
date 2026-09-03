@@ -72,6 +72,7 @@ class SearchResult:
     official_url: str
     fetched_at: datetime
     scope: SearchScope = SearchScope.BODY
+    match_context: str | None = None
 
 
 class SourceState(str, Enum):
