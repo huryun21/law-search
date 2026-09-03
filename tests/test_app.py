@@ -1,11 +1,27 @@
 import asyncio
 from contextlib import nullcontext
+from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 import subprocess
 
+import pytest
+
 import lawsearch.app as app
 
-from lawsearch.models import ParsedQuery
+from lawsearch.models import (
+    DetailResponse,
+    ParsedQuery,
+    SearchResponse,
+    SearchScope,
+    SourceGroup,
+    SourceState,
+)
+from streamlit_stub import FakeStreamlit, Rerun
+
+
+def _fetched():
+    return datetime(2026, 8, 11, tzinfo=UTC)
 
 
 class SessionState(dict):
@@ -300,3 +316,63 @@ def test_launcher_git_attribute_forces_windows_line_endings():
     )
 
     assert result.stdout.strip().endswith("eol: crlf")
+
+
+def _card_response(result_factory):
+    results = tuple(
+        replace(
+            result_factory(source, uid=f"{source.value}-1", title=f"{source.value} 규정"),
+            scope=SearchScope.BODY,
+            match_context=f"제1조 — {source.value}",
+        )
+        for source in (SourceGroup.LAW, SourceGroup.DECREE, SourceGroup.ADMIN_RULE)
+    )
+    return SearchResponse(
+        results=results,
+        suggestions=(),
+        errors=(),
+        source_states={"laws": SourceState.LIVE, "admin_rules": SourceState.LIVE},
+        source_fetched_at={"laws": _fetched(), "admin_rules": _fetched()},
+    )
+
+
+def test_results_view_lays_out_cards_two_per_row(result_factory):
+    streamlit = FakeStreamlit()
+
+    app._render_results(streamlit, object(), _card_response(result_factory), ParsedQuery("주차장"))
+
+    assert any(args == (2,) for name, args, _ in streamlit.calls if name == "columns")
+
+
+def test_results_card_preview_button_opens_preview(result_factory):
+    response = _card_response(result_factory)
+    first = response.results[0]
+    key = f"{first.source.value}:{first.uid}"
+    streamlit = FakeStreamlit(buttons={f"preview-{key}": True})
+
+    with pytest.raises(Rerun):
+        app._render_results(streamlit, object(), response, ParsedQuery("주차장"))
+
+    assert streamlit.session_state["view_mode"] == "preview"
+    assert streamlit.session_state["selected_result_key"] == key
+
+
+def test_results_card_hides_button_for_non_official_url(result_factory):
+    bad = replace(
+        result_factory(SourceGroup.LAW, uid="l1", title="주차장법"),
+        scope=SearchScope.BODY,
+        official_url="http://law.go.kr/x",
+        match_context="제1조 — x",
+    )
+    response = SearchResponse(
+        results=(bad,),
+        suggestions=(),
+        errors=(),
+        source_states={"laws": SourceState.LIVE},
+        source_fetched_at={"laws": _fetched()},
+    )
+    streamlit = FakeStreamlit()
+
+    app._render_results(streamlit, object(), response, ParsedQuery("주차장"))
+
+    assert "link_button" not in streamlit.names()
