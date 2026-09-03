@@ -28,7 +28,10 @@ from lawsearch.viewmodels import (
     build_error_messages,
     build_grouped_view,
     card_rows,
+    detail_session_key,
+    format_timestamp,
     fully_qualified_region_name,
+    is_official_url,
     sidebar_sections,
 )
 
@@ -97,11 +100,20 @@ async def _search(settings: Settings, parsed: ParsedQuery, refresh: bool) -> Sea
 
 
 async def _contexts(
-    settings: Settings, result: SearchResult, keyword: str, refresh: bool = False
+    settings: Settings,
+    result: SearchResult,
+    keyword: str,
+    *,
+    refresh: bool = False,
+    limit: int = 5,
 ):
     async with LawApiClient(load_api_key(settings.api_key_file)) as api:
-        service = SearchService(api, CacheStore(settings.cache_path), lambda: datetime.now(UTC))
-        return await service.load_contexts(result, keyword, refresh=refresh)
+        service = SearchService(
+            api, CacheStore(settings.cache_path), lambda: datetime.now(UTC)
+        )
+        return await service.load_contexts(
+            result, keyword, refresh=refresh, limit=limit
+        )
 
 
 def _load_resources(streamlit: Any) -> tuple[Settings, RegionRegistry]:
@@ -329,10 +341,83 @@ def _render_sidebar(
                         st.rerun()
 
 
+_PREVIEW_CONTEXT_LIMIT = 20
+
+
+def _find_result(response: SearchResponse, key: str | None) -> SearchResult | None:
+    if key is None:
+        return None
+    for result in response.results:
+        if f"{result.source.value}:{result.uid}" == key:
+            return result
+    return None
+
+
+def _preview_detail(
+    st: Any, settings: Settings, result: SearchResult, keyword: str
+):
+    session_key = detail_session_key(result.source, result.uid, keyword)
+    cached = st.session_state.get(session_key)
+    if cached is not None:
+        return cached
+    try:
+        detail = _run(
+            _contexts(settings, result, keyword, limit=_PREVIEW_CONTEXT_LIMIT)
+        )
+    except Exception:
+        st.error("본문을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.")
+        return None
+    st.session_state[session_key] = detail
+    return detail
+
+
 def _render_preview(
     st: Any, settings: Settings, response: SearchResponse, parsed: ParsedQuery
 ) -> None:
-    _render_results(st, settings, response, parsed)
+    result = _find_result(response, st.session_state.get("selected_result_key"))
+    if result is None:
+        _open_results(st)
+        st.rerun()
+        return
+    if st.button("← 검색 결과로 돌아가기", key="preview-back"):
+        _open_results(st)
+        st.rerun()
+    st.markdown(f"### {result.title}")
+    meta = [result.category]
+    if result.authority:
+        meta.append(result.authority)
+    meta.append("현행" if result.is_current else "연혁")
+    if result.effective_date:
+        meta.append(f"시행 {result.effective_date.isoformat()}")
+    st.caption(" · ".join(meta))
+    if is_official_url(result.official_url):
+        st.link_button("공식 원문 열기", result.official_url)
+
+    detail = _preview_detail(st, settings, result, parsed.keyword)
+    if detail is None:
+        return
+    if detail.state is SourceState.ERROR:
+        st.error("본문을 불러오지 못했습니다.")
+        return
+    if not detail.contexts:
+        st.caption("검색어와 정확히 일치하는 조문이 없습니다.")
+        return
+    if detail.state is SourceState.STALE_FALLBACK:
+        st.warning(
+            f"이전 본문 결과 · 조회 시각 {format_timestamp(detail.fetched_at)}"
+        )
+    st.caption(f"정확히 일치하는 조문 {len(detail.contexts)}건")
+    if len(detail.contexts) > 1:
+        labels = [context.split(" — ", 1)[0] for context in detail.contexts]
+        index = st.radio(
+            "조문 선택",
+            range(len(detail.contexts)),
+            format_func=lambda position: labels[position],
+            key="preview-article",
+        )
+    else:
+        index = 0
+    st.markdown(f"> {detail.contexts[index]}")
 
 
 def _render_compare(

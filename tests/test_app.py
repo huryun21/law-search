@@ -408,3 +408,123 @@ def test_sidebar_click_opens_preview_without_search(monkeypatch, result_factory)
 
     assert streamlit.session_state["view_mode"] == "preview"
     assert streamlit.session_state["selected_result_key"] == key
+
+
+def _preview_response(result_factory, *, scope, match_context=None):
+    result = replace(
+        result_factory(SourceGroup.LAW, uid="001498", title="주차장법"),
+        scope=scope,
+        match_context=match_context,
+    )
+    return result, SearchResponse(
+        results=(result,),
+        suggestions=(),
+        errors=(),
+        source_states={"laws": SourceState.LIVE},
+        source_fetched_at={"laws": _fetched()},
+    )
+
+
+def test_preview_reuses_session_detail_without_calling_api(monkeypatch, result_factory):
+    result, response = _preview_response(
+        result_factory, scope=SearchScope.BODY, match_context="제2조 — 주차 대수"
+    )
+    key = f"law:{result.uid}"
+    detail = DetailResponse(
+        ("제2조(주차 대수) — 시설별 주차 대수",), SourceState.FRESH_CACHE, _fetched()
+    )
+    session_key = app.detail_session_key(result.source, result.uid, "주차 대수")
+    streamlit = FakeStreamlit(
+        session_state={
+            "response": response,
+            "view_mode": "preview",
+            "selected_result_key": key,
+            session_key: detail,
+        }
+    )
+
+    def forbidden(*a, **k):
+        raise AssertionError("preview reused cache but still called an API")
+
+    monkeypatch.setattr(app, "_run", forbidden)
+
+    app._render_preview(streamlit, object(), response, ParsedQuery("주차 대수"))
+
+    joined = streamlit.text()
+    assert "제2조(주차 대수)" in joined
+    assert "정확히 일치하는 조문 1건" in joined
+
+
+def test_preview_lazy_loads_title_match_once(monkeypatch, result_factory):
+    result, response = _preview_response(result_factory, scope=SearchScope.TITLE)
+    key = f"law:{result.uid}"
+    streamlit = FakeStreamlit(
+        session_state={
+            "response": response,
+            "view_mode": "preview",
+            "selected_result_key": key,
+        }
+    )
+    calls = []
+
+    def fake_run(awaitable):
+        awaitable.close()
+        calls.append(True)
+        return DetailResponse(("제1조(목적) — 주차장의 설치",), SourceState.LIVE, _fetched())
+
+    monkeypatch.setattr(app, "_run", fake_run)
+
+    app._render_preview(streamlit, object(), response, ParsedQuery("주차장"))
+
+    assert calls == [True]
+    session_key = app.detail_session_key(result.source, result.uid, "주차장")
+    assert session_key in streamlit.session_state
+
+
+def test_preview_back_button_returns_to_results_without_api(monkeypatch, result_factory):
+    result, response = _preview_response(
+        result_factory, scope=SearchScope.BODY, match_context="x"
+    )
+    key = f"law:{result.uid}"
+    streamlit = FakeStreamlit(
+        session_state={
+            "response": response,
+            "view_mode": "preview",
+            "selected_result_key": key,
+        },
+        buttons={"preview-back": True},
+    )
+
+    monkeypatch.setattr(
+        app, "_run", lambda *a, **k: (_ for _ in ()).throw(AssertionError("api call"))
+    )
+
+    with pytest.raises(Rerun):
+        app._render_preview(streamlit, object(), response, ParsedQuery("주차장"))
+
+    assert streamlit.session_state["view_mode"] == "results"
+    assert "selected_result_key" not in streamlit.session_state
+
+
+def test_preview_without_exact_context_does_not_show_arbitrary_text(
+    monkeypatch, result_factory
+):
+    result, response = _preview_response(result_factory, scope=SearchScope.TITLE)
+    key = f"law:{result.uid}"
+    streamlit = FakeStreamlit(
+        session_state={
+            "response": response,
+            "view_mode": "preview",
+            "selected_result_key": key,
+        }
+    )
+
+    def fake_run(awaitable):
+        awaitable.close()
+        return DetailResponse((), SourceState.EMPTY, _fetched())
+
+    monkeypatch.setattr(app, "_run", fake_run)
+
+    app._render_preview(streamlit, object(), response, ParsedQuery("주차장"))
+
+    assert "정확히 일치하는 조문이 없습니다" in streamlit.text()
