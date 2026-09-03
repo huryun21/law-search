@@ -39,6 +39,51 @@ if TYPE_CHECKING:
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _T = TypeVar("_T")
 
+_VIEW_RESULTS = "results"
+_VIEW_PREVIEW = "preview"
+_VIEW_COMPARE = "compare"
+_WORKSPACE_KEYS = (
+    "view_mode",
+    "selected_result_key",
+    "compare_left_result_key",
+    "compare_right_result_key",
+    "compare_left_article",
+    "compare_right_article",
+)
+
+
+def _view_mode(st: Any) -> str:
+    return st.session_state.get("view_mode", _VIEW_RESULTS)
+
+
+def _reset_workspace(st: Any) -> None:
+    for key in _WORKSPACE_KEYS:
+        st.session_state.pop(key, None)
+
+
+def _clear_detail_state(st: Any) -> None:
+    stale = [
+        key
+        for key in list(st.session_state)
+        if isinstance(key, str) and key.startswith("detail-")
+    ]
+    for key in stale:
+        st.session_state.pop(key, None)
+
+
+def _open_preview(st: Any, key: str) -> None:
+    st.session_state.view_mode = _VIEW_PREVIEW
+    st.session_state.selected_result_key = key
+
+
+def _open_results(st: Any) -> None:
+    st.session_state.view_mode = _VIEW_RESULTS
+    st.session_state.pop("selected_result_key", None)
+
+
+def _open_compare(st: Any) -> None:
+    st.session_state.view_mode = _VIEW_COMPARE
+
 
 def _run(awaitable: Awaitable[_T]) -> _T:
     """Run one async operation from Streamlit's synchronous script thread."""
@@ -170,6 +215,8 @@ def _clear_ambiguity(st: Any) -> None:
 def _clear_response(st: Any) -> None:
     st.session_state.pop("response", None)
     st.session_state.pop("parsed_query", None)
+    _reset_workspace(st)
+    _clear_detail_state(st)
 
 
 def _perform_search(st: Any, settings: Settings, parsed: ParsedQuery, refresh: bool) -> None:

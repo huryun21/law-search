@@ -186,6 +186,56 @@ def test_ui_error_never_exposes_exception_text(monkeypatch):
     assert "parsed_query" not in streamlit.session_state
 
 
+def test_open_preview_sets_mode_and_selection():
+    streamlit = ControllerStub()
+
+    app._open_preview(streamlit, "law:001498")
+
+    assert streamlit.session_state["view_mode"] == "preview"
+    assert streamlit.session_state["selected_result_key"] == "law:001498"
+
+
+def test_open_results_clears_selection():
+    streamlit = ControllerStub(
+        {"view_mode": "preview", "selected_result_key": "law:1"}
+    )
+
+    app._open_results(streamlit)
+
+    assert streamlit.session_state["view_mode"] == "results"
+    assert "selected_result_key" not in streamlit.session_state
+
+
+def test_view_mode_defaults_to_results():
+    assert app._view_mode(ControllerStub()) == "results"
+
+
+def test_new_search_resets_workspace_and_detail_state(monkeypatch):
+    streamlit = ControllerStub(
+        {
+            "view_mode": "compare",
+            "selected_result_key": "law:1",
+            "compare_left_result_key": "law:2",
+            "detail-law-1-0123456789abcdef": object(),
+        }
+    )
+    streamlit.spinner = lambda message: nullcontext()
+
+    async def fake_search(settings, parsed, refresh):
+        return object()
+
+    monkeypatch.setattr(app, "_search", fake_search)
+
+    app._perform_search(streamlit, object(), ParsedQuery("주차장"), refresh=False)
+
+    for key in ("view_mode", "selected_result_key", "compare_left_result_key"):
+        assert key not in streamlit.session_state
+    assert not any(
+        isinstance(key, str) and key.startswith("detail-")
+        for key in streamlit.session_state
+    )
+
+
 def test_search_client_is_closed_in_the_same_event_loop(monkeypatch, tmp_path):
     events = []
 
