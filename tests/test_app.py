@@ -376,3 +376,35 @@ def test_results_card_hides_button_for_non_official_url(result_factory):
     app._render_results(streamlit, object(), response, ParsedQuery("주차장"))
 
     assert "link_button" not in streamlit.names()
+
+
+def test_sidebar_lists_every_result_as_a_nav_button(result_factory):
+    response = _card_response(result_factory)
+    streamlit = FakeStreamlit(session_state={"response": response})
+
+    app._render_sidebar(streamlit, response, ParsedQuery("주차장"))
+
+    nav_keys = [
+        kwargs.get("key")
+        for name, args, kwargs in streamlit.calls
+        if name == "button" and str(kwargs.get("key", "")).startswith("nav-")
+    ]
+    assert len(nav_keys) == len(response.results)
+
+
+def test_sidebar_click_opens_preview_without_search(monkeypatch, result_factory):
+    response = _card_response(result_factory)
+    target = response.results[1]
+    key = f"{target.source.value}:{target.uid}"
+    streamlit = FakeStreamlit(buttons={f"nav-{key}": True})
+
+    def forbidden(*a, **k):
+        raise AssertionError("sidebar navigation must not call an API")
+
+    monkeypatch.setattr(app, "_run", forbidden)
+
+    with pytest.raises(Rerun):
+        app._render_sidebar(streamlit, response, ParsedQuery("주차장"))
+
+    assert streamlit.session_state["view_mode"] == "preview"
+    assert streamlit.session_state["selected_result_key"] == key

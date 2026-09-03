@@ -29,6 +29,7 @@ from lawsearch.viewmodels import (
     build_grouped_view,
     card_rows,
     fully_qualified_region_name,
+    sidebar_sections,
 )
 
 if TYPE_CHECKING:
@@ -313,8 +314,19 @@ def _render_card(st: Any, card: CardView, keyword: str) -> None:
             official_col.link_button("공식 원문", card.official_url, width="stretch")
 
 
-def _render_sidebar(st: Any, response: SearchResponse, parsed: ParsedQuery) -> None:
-    return None
+def _render_sidebar(
+    st: Any, response: SearchResponse, parsed: ParsedQuery
+) -> None:
+    for section in sidebar_sections(response, parsed.region):
+        st.subheader(section.label)
+        for group in section.groups:
+            with st.expander(f"{group.label} ({group.count})"):
+                for entry in group.entries:
+                    if st.button(
+                        entry.title, key=f"nav-{entry.key}", width="stretch"
+                    ):
+                        _open_preview(st, entry.key)
+                        st.rerun()
 
 
 def _render_preview(
