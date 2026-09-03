@@ -25,9 +25,11 @@ from lawsearch.regions import RegionRegistry
 from lawsearch.service import SearchService
 from lawsearch.viewmodels import (
     CardView,
+    CompareOption,
     build_error_messages,
     build_grouped_view,
     card_rows,
+    compare_options,
     detail_session_key,
     format_timestamp,
     fully_qualified_region_name,
@@ -423,7 +425,65 @@ def _render_preview(
 def _render_compare(
     st: Any, settings: Settings, response: SearchResponse, parsed: ParsedQuery
 ) -> None:
-    _render_results(st, settings, response, parsed)
+    options = compare_options(response)
+    if len(options) < 2:
+        st.info("비교하려면 검색 결과가 2건 이상 필요합니다.")
+        return
+    st.caption(
+        "키워드 일치 조문을 나란히 표시하며 법적 연계 관계를 자동 확정하지 않습니다."
+    )
+    left_col, right_col = st.columns(2)
+    _render_compare_side(st, settings, response, parsed, options, left_col, "left")
+    _render_compare_side(st, settings, response, parsed, options, right_col, "right")
+
+
+def _render_compare_side(
+    st: Any,
+    settings: Settings,
+    response: SearchResponse,
+    parsed: ParsedQuery,
+    options: tuple[CompareOption, ...],
+    column: Any,
+    side: str,
+) -> None:
+    labels = {option.label: option.key for option in options}
+    with column:
+        chosen_label = st.selectbox(
+            "왼쪽 문서" if side == "left" else "오른쪽 문서",
+            tuple(labels),
+            key=f"compare-{side}",
+        )
+        key = labels[chosen_label]
+        st.session_state[f"compare_{side}_result_key"] = key
+        result = _find_result(response, key)
+        if result is None:
+            st.error("문서를 찾을 수 없습니다.")
+            return
+        meta = [result.category]
+        if result.authority:
+            meta.append(result.authority)
+        meta.append("현행" if result.is_current else "연혁")
+        st.caption(" · ".join(meta))
+        if is_official_url(result.official_url):
+            st.link_button("공식 원문 열기", result.official_url)
+        detail = _preview_detail(st, settings, result, parsed.keyword)
+        if detail is None or detail.state is SourceState.ERROR:
+            st.error("본문을 불러오지 못했습니다.")
+            return
+        if not detail.contexts:
+            st.caption("검색어와 정확히 일치하는 조문이 없습니다.")
+            return
+        if len(detail.contexts) > 1:
+            article_labels = [c.split(" — ", 1)[0] for c in detail.contexts]
+            index = st.radio(
+                "조문 선택",
+                range(len(detail.contexts)),
+                format_func=lambda position: article_labels[position],
+                key=f"compare-{side}-article",
+            )
+        else:
+            index = 0
+        st.markdown(f"> {detail.contexts[index]}")
 
 
 if __name__ == "__main__":

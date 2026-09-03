@@ -528,3 +528,93 @@ def test_preview_without_exact_context_does_not_show_arbitrary_text(
     app._render_preview(streamlit, object(), response, ParsedQuery("주차장"))
 
     assert "정확히 일치하는 조문이 없습니다" in streamlit.text()
+
+
+def _two_result_response(result_factory):
+    left = replace(
+        result_factory(SourceGroup.LAW, uid="l1", title="건축법"),
+        scope=SearchScope.BODY,
+        match_context="제49조 — 건축물의 피난시설",
+    )
+    right = replace(
+        result_factory(SourceGroup.DECREE, uid="d1", title="건축법 시행령"),
+        scope=SearchScope.BODY,
+        match_context="제46조 — 방화구획의 설치",
+    )
+    return SearchResponse(
+        results=(left, right),
+        suggestions=(),
+        errors=(),
+        source_states={"laws": SourceState.LIVE},
+        source_fetched_at={"laws": _fetched()},
+    )
+
+
+def test_compare_needs_two_results(result_factory):
+    single = SearchResponse(
+        results=(
+            replace(
+                result_factory(SourceGroup.LAW, uid="l1"),
+                scope=SearchScope.BODY,
+                match_context="x",
+            ),
+        ),
+        suggestions=(),
+        errors=(),
+        source_states={"laws": SourceState.LIVE},
+        source_fetched_at={"laws": _fetched()},
+    )
+    streamlit = FakeStreamlit()
+
+    app._render_compare(streamlit, object(), single, ParsedQuery("주차장"))
+
+    assert any(name == "info" for name, _, _ in streamlit.calls)
+
+
+def test_compare_shows_non_judgement_notice_and_two_columns(monkeypatch, result_factory):
+    response = _two_result_response(result_factory)
+    streamlit = FakeStreamlit()
+    monkeypatch.setattr(
+        app,
+        "_preview_detail",
+        lambda st, settings, result, keyword: DetailResponse(
+            (result.match_context,), SourceState.FRESH_CACHE, _fetched()
+        ),
+    )
+
+    app._render_compare(streamlit, object(), response, ParsedQuery("방화구획"))
+
+    assert "법적 연계 관계를 자동 확정하지 않습니다" in streamlit.text()
+    assert any(args == (2,) for name, args, _ in streamlit.calls if name == "columns")
+
+
+def test_compare_allows_same_source_on_both_sides(monkeypatch, result_factory):
+    same_source = SearchResponse(
+        results=tuple(
+            replace(
+                result_factory(SourceGroup.LAW, uid=f"l{i}", title=f"법 {i}"),
+                scope=SearchScope.BODY,
+                match_context=f"제{i}조 — 내용",
+            )
+            for i in range(2)
+        ),
+        suggestions=(),
+        errors=(),
+        source_states={"laws": SourceState.LIVE},
+        source_fetched_at={"laws": _fetched()},
+    )
+    streamlit = FakeStreamlit(
+        selections={"compare-left": "법률 · 법 0", "compare-right": "법률 · 법 1"}
+    )
+    monkeypatch.setattr(
+        app,
+        "_preview_detail",
+        lambda st, settings, result, keyword: DetailResponse(
+            (result.match_context,), SourceState.FRESH_CACHE, _fetched()
+        ),
+    )
+
+    app._render_compare(streamlit, object(), same_source, ParsedQuery("내용"))
+
+    assert streamlit.session_state["compare_left_result_key"] == "law:l0"
+    assert streamlit.session_state["compare_right_result_key"] == "law:l1"
