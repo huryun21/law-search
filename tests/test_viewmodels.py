@@ -3,11 +3,13 @@ from datetime import UTC, date, datetime
 
 from lawsearch.viewmodels import (
     CardView,
+    CompareOption,
     SidebarEntry,
     build_error_messages,
     build_grouped_view,
     card_rows,
     card_view,
+    compare_options,
     detail_session_key,
     fully_qualified_region_name,
     is_official_url,
@@ -475,3 +477,37 @@ def test_sidebar_entry_count_equals_result_count(result_factory, pyeongtaek):
 
     total = sum(len(group.entries) for section in sections for group in section.groups)
     assert total == len(results)
+
+
+def test_compare_options_cover_every_result_in_ranked_order(result_factory):
+    results = (
+        replace(
+            result_factory(SourceGroup.LAW, uid="l1", title="주차장법"),
+            scope=SearchScope.TITLE,
+        ),
+        replace(
+            result_factory(SourceGroup.MUNICIPAL, uid="m1", title="평택시 주차장 조례"),
+            scope=SearchScope.BODY,
+        ),
+    )
+    options = compare_options(
+        _response(results, {"laws": SourceState.LIVE, "municipal": SourceState.LIVE})
+    )
+
+    assert options == (
+        CompareOption("law:l1", "법률 · 주차장법"),
+        CompareOption("municipal:m1", "기초지자체 자치법규 · 평택시 주차장 조례"),
+    )
+
+
+def test_compare_options_allow_the_same_source_on_both_sides(result_factory):
+    results = tuple(
+        replace(
+            result_factory(SourceGroup.LAW, uid=f"l{index}", title=f"법령 {index}"),
+            scope=SearchScope.TITLE,
+        )
+        for index in range(2)
+    )
+    options = compare_options(_response(results, {"laws": SourceState.LIVE}))
+
+    assert {option.key for option in options} == {"law:l0", "law:l1"}

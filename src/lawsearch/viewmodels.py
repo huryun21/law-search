@@ -377,3 +377,19 @@ def _sidebar_group_label(
     if source in _LOCAL_SOURCES:
         return _group_label(source, tuple(items), region)
     return _SIDEBAR_GROUP_LABELS[source]
+
+
+@dataclass(frozen=True)
+class CompareOption:
+    key: str
+    label: str
+
+
+def compare_options(response: SearchResponse) -> tuple[CompareOption, ...]:
+    return tuple(
+        CompareOption(
+            key=result_key(result),
+            label=f"{_DEFAULT_LABELS[result.source]} · {result.title}",
+        )
+        for result in response.results
+    )
