@@ -110,6 +110,8 @@ class SearchService:
         result: SearchResult,
         keyword: str,
         refresh: bool = False,
+        *,
+        limit: int = 5,
     ) -> DetailResponse:
         now = self._clock()
         key = make_cache_key(
@@ -118,7 +120,7 @@ class SearchService:
         cached = self._cache.get(key, now)
         if cached is not None and cached.is_fresh and not refresh:
             return DetailResponse(
-                extract_contexts(cached.payload, keyword),
+                extract_contexts(cached.payload, keyword, limit),
                 SourceState.FRESH_CACHE,
                 cached.fetched_at,
             )
@@ -128,12 +130,12 @@ class SearchService:
             if cached is None:
                 return DetailResponse((), SourceState.ERROR, now)
             return DetailResponse(
-                extract_contexts(cached.payload, keyword),
+                extract_contexts(cached.payload, keyword, limit),
                 SourceState.STALE_FALLBACK,
                 cached.fetched_at,
             )
         self._cache.put(key, payload, now)
-        contexts = extract_contexts(payload, keyword)
+        contexts = extract_contexts(payload, keyword, limit)
         return DetailResponse(
             contexts,
             SourceState.LIVE if contexts else SourceState.EMPTY,
@@ -243,9 +245,13 @@ class SearchService:
                 return None, True
             if not detail.contexts:
                 return None, False
+            context = detail.contexts[0]
             if result.scope is SearchScope.TITLE:
-                return (replace(result, scope=SearchScope.BODY), state), False
-            return item, False
+                return (
+                    replace(result, scope=SearchScope.BODY, match_context=context),
+                    state,
+                ), False
+            return (replace(result, match_context=context), state), False
 
         verified = await asyncio.gather(*(verify(item) for item in retained))
         return (
