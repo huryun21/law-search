@@ -131,28 +131,27 @@ run.bat
 남은 작업:
 
 5. 좁은 폭에서 1열로 자연스럽게 재배치되는지 수동 검증(모바일 UX 우선순위는 낮음).
-6. Streamlit Community Cloud 비공개 배포(§8) — config.py 이중 인증, `streamlit_app.py`, `requirements.txt`. 별도 계획 필요.
 
 ## 8. 배포 상태와 권장 순서
 
-### 현재
+### 저장소 준비 완료 (2026-09-03)
 
-- GitHub 저장소는 코드 이력·테스트·기존 설계서를 보관하는 용도다.
-- 현재 앱은 개인 PC에서만 실행된다. PC가 꺼져 있으면 다른 사람이 사용할 수 없다.
-- Streamlit Community Cloud, Azure, 내부 서버에는 아직 배포되지 않았다.
+- 루트 `streamlit_app.py` 진입점 — `lawsearch.app.main` 위임.
+- `requirements.txt` — `streamlit`·`httpx`를 테스트한 버전으로 고정하고 `.`로 패키지 설치.
+- `.streamlit/secrets.toml` Git 제외, `.streamlit/secrets.toml.example` 추가.
+- `lawsearch.config.resolve_api_key()`가 `st.secrets`의 `LAW_API_KEY` → 로컬 키 파일 순으로 인증값을 고른다. `Settings`에는 인증값을 담지 않고, 값은 `LawApiClient` 생성 시에만 전달된다.
+- `config.local.toml`이 없어도 앱이 시작된다(캐시 경로 기본값 `data/cache.db`). `run.bat`(로컬 전용)은 그대로 `config.local.toml`을 요구한다.
 
-### 소규모 내부팀 배포의 다음 단계
+### 남은 것은 사용자의 Community Cloud 대시보드 작업
 
-약 10명, 인당 하루 1~2회 검색이라는 초기 가정에서는 비공개 Streamlit Community Cloud가 가장 단순한 첫 배포 후보다. 개인 PC를 켜둘 필요가 없고, GitHub의 코드 변경을 배포 원본으로 사용할 수 있다.
+약 10명, 인당 하루 1~2회 검색이라는 가정에서 비공개 Streamlit Community Cloud가 첫 배포 후보다. GitHub `main`이 배포 원본이다.
 
-다만 먼저 구현해야 할 항목:
+1. Community Cloud에서 저장소 연결, 브랜치 `main`, 메인 파일 `streamlit_app.py` 지정.
+2. 앱 Settings > Secrets 에 `LAW_API_KEY = "..."` 입력(`.streamlit/secrets.toml.example` 참고).
+3. 앱을 비공개로 설정하고 팀원 이메일만 뷰어로 초대. 워크스페이스당 비공개 앱은 1개 제한.
+4. 실제 키·URL을 저장소나 문서에 적지 않는다.
 
-1. streamlit_app.py 진입점 추가
-2. 재현 가능한 requirements.txt 또는 의존성 잠금
-3. .streamlit/secrets.toml Git 제외
-4. Cloud에서는 st.secrets의 LAW_API_KEY를 API 클라이언트를 만들 때만 읽도록 구성
-5. config.local.toml이 없는 Cloud 환경에서도 시작하도록 config.py 변경
-6. 비공개 앱에서 팀원 이메일만 초대하고, 실제 키와 URL을 문서에 적지 않기
+클라우드 SQLite 캐시는 컨테이너 재시작 시 사라지며, 이 경우 공식 API에서 다시 조회한다(정상 동작).
 
 Azure 이전은 이 앱의 검색·서비스·정확도 계층을 버리고 다시 만들 일이 아니다. 나중에 호스팅, 비밀값 저장, 영구 캐시 운영만 바꾸면 된다.
 
@@ -164,7 +163,8 @@ Azure 이전은 이 앱의 검색·서비스·정확도 계층을 버리고 다�
 | src/lawsearch/viewmodels.py | 순수 뷰모델: 그룹·카드·사이드바·비교 목록, 공식 URL 검증, detail_session_key | tests/test_viewmodels.py |
 | src/lawsearch/api.py | 국가법령 API 요청, 응답 인증값 제거 | tests/test_api.py, test_api_response_security.py |
 | src/lawsearch/cache.py | SQLite TTL 캐시와 인증값 방어 | tests/test_cache.py |
-| src/lawsearch/config.py | 로컬 키 파일과 캐시 경로 | tests/test_config.py |
+| src/lawsearch/config.py | 로컬 키 파일·캐시 경로, resolve_api_key(st.secrets→키 파일) | tests/test_config.py |
+| streamlit_app.py | Community Cloud 진입점 (lawsearch.app.main 위임) | tests/test_deployment.py |
 | src/lawsearch/detail.py | 정확 문맥·조항 위치 추출 | tests/test_detail.py |
 | src/lawsearch/normalize.py | API 응답 공통 모델화, 공개 원문 URL | tests/test_normalize.py |
 | src/lawsearch/query.py | @지역 파싱 | tests/test_query.py |

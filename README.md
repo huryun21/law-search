@@ -58,6 +58,22 @@ Remove-Item Env:RUN_LIVE_LAW_API
 
 일부 자료원에 대한 이용 승인이 없으면 해당 테스트는 승인되지 않은 공식 엔드포인트라는 제한을 명시하고 xfail 처리합니다.
 
+## Streamlit Community Cloud 배포
+
+로컬 실행과 별개로, 저장소를 Community Cloud 비공개 앱으로 배포할 수 있습니다. `main` 브랜치가 배포 원본입니다.
+
+1. Community Cloud에서 이 저장소를 연결하고 브랜치 `main`, 메인 파일 `streamlit_app.py`를 선택합니다.
+2. 앱 관리 화면 > Settings > Secrets 에 다음을 입력합니다. (`.streamlit/secrets.toml.example` 참고)
+
+   ```toml
+   LAW_API_KEY = "국가법령정보 공동활용 승인 키"
+   ```
+
+3. 앱을 비공개로 설정하고 팀원 이메일을 뷰어로 초대합니다. 워크스페이스당 비공개 앱은 1개로 제한됩니다.
+4. 의존성은 `requirements.txt`로 고정됩니다. 버전을 바꾸면 재설치가 일어납니다.
+
+API 키는 `st.secrets`에서만 읽어 API 클라이언트를 만들 때만 전달되며, 저장소·설정 객체·SQLite·로그·화면에는 남지 않습니다. 클라우드의 SQLite 캐시는 컨테이너 재시작 시 사라지며, 이 경우 공식 API에서 다시 조회합니다. `.streamlit/secrets.toml`은 커밋하지 마십시오.
+
 ## 법적·출처 고지
 
 검색 결과는 참고자료입니다. 최종 확인은 국가법령정보센터의 공식 원문과 소관기관 기준으로 하십시오. 검색기는 공식 링크만 제공하며 완전성, 최신성 또는 특정 사안에 대한 법적 결론을 보장하지 않습니다.
