@@ -13,33 +13,40 @@ class ConfigError(ValueError):
 
 @dataclass(frozen=True)
 class Settings:
-    api_key_file: Path
+    api_key_file: Path | None
     cache_path: Path
 
 
 def load_settings(
     project_root: Path, environ: Mapping[str, str] | None = None
 ) -> Settings:
-    """Load key-file and cache paths without loading the credential itself."""
+    """Resolve the key-file and cache paths without loading the credential.
+
+    A missing ``config.local.toml`` is not an error — the Streamlit Cloud
+    deployment has no such file and supplies the key through ``st.secrets``.
+    """
     config_path = project_root / "config.local.toml"
     try:
         config = tomllib.loads(config_path.read_text(encoding="utf-8"))
-    except FileNotFoundError as error:
-        raise ConfigError("로컬 설정 파일을 찾을 수 없습니다.") from error
+    except FileNotFoundError:
+        config = {}
     except tomllib.TOMLDecodeError as error:
         raise ConfigError("로컬 설정 파일 형식이 올바르지 않습니다.") from error
 
     environment = process_environ if environ is None else environ
     api_key_file = environment.get("LAW_API_KEY_FILE", config.get("api_key_file"))
-    cache_path = environment.get("LAW_CACHE_PATH", config.get("cache_path"))
-    if not api_key_file or not cache_path:
-        raise ConfigError("API 인증정보 파일 경로와 캐시 경로가 필요합니다.")
+    cache_path = (
+        environment.get("LAW_CACHE_PATH", config.get("cache_path")) or "data/cache.db"
+    )
 
     resolved_cache_path = Path(cache_path)
     if not resolved_cache_path.is_absolute():
         resolved_cache_path = project_root / resolved_cache_path
 
-    return Settings(api_key_file=Path(api_key_file), cache_path=resolved_cache_path)
+    return Settings(
+        api_key_file=Path(api_key_file) if api_key_file else None,
+        cache_path=resolved_cache_path,
+    )
 
 
 def load_api_key(path: Path) -> str:

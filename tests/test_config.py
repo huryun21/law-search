@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from lawsearch.config import ConfigError, load_api_key, load_settings
+from lawsearch.config import ConfigError, Settings, load_api_key, load_settings
 
 
 def test_settings_store_only_external_key_path(tmp_path: Path):
@@ -68,3 +68,28 @@ def test_environment_overrides_local_config(tmp_path: Path):
 
     assert settings.api_key_file == override_key
     assert settings.cache_path == tmp_path / "data" / "override.db"
+
+
+def test_load_settings_without_config_file_has_no_key_file_and_default_cache(tmp_path: Path):
+    settings = load_settings(tmp_path, {})
+
+    assert settings.api_key_file is None
+    assert settings.cache_path == tmp_path / "data" / "cache.db"
+
+
+def test_load_settings_env_key_file_works_without_a_config_file(tmp_path: Path):
+    key_file = tmp_path / "law-key.txt"
+
+    settings = load_settings(tmp_path, {"LAW_API_KEY_FILE": str(key_file)})
+
+    assert settings.api_key_file == key_file
+    assert settings.cache_path == tmp_path / "data" / "cache.db"
+
+
+def test_load_settings_still_rejects_a_malformed_config_file(tmp_path: Path):
+    (tmp_path / "config.local.toml").write_text(
+        "this is not = valid = toml", encoding="utf-8"
+    )
+
+    with pytest.raises(ConfigError, match="형식"):
+        load_settings(tmp_path, {})
