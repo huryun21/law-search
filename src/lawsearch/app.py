@@ -8,11 +8,11 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Awaitable, TypeVar
+from typing import TYPE_CHECKING, Any, Awaitable, Mapping, TypeVar
 
 from lawsearch.api import LawApiClient
 from lawsearch.cache import CacheStore
-from lawsearch.config import ConfigError, Settings, load_api_key, load_settings
+from lawsearch.config import ConfigError, Settings, load_settings, resolve_api_key
 from lawsearch.models import (
     ParsedQuery,
     Region,
@@ -95,8 +95,20 @@ def _run(awaitable: Awaitable[_T]) -> _T:
     return asyncio.run(awaitable)
 
 
+def _app_secrets() -> Mapping[str, str]:
+    """The Cloud-provided secrets the app cares about, or {} when there are none."""
+    try:
+        import streamlit as st
+
+        return {
+            key: str(st.secrets[key]) for key in ("LAW_API_KEY",) if key in st.secrets
+        }
+    except Exception:
+        return {}
+
+
 async def _search(settings: Settings, parsed: ParsedQuery, refresh: bool) -> SearchResponse:
-    async with LawApiClient(load_api_key(settings.api_key_file)) as api:
+    async with LawApiClient(resolve_api_key(settings, _app_secrets())) as api:
         service = SearchService(api, CacheStore(settings.cache_path), lambda: datetime.now(UTC))
         return await service.search(parsed, refresh=refresh)
 
@@ -109,7 +121,7 @@ async def _contexts(
     refresh: bool = False,
     limit: int = 5,
 ):
-    async with LawApiClient(load_api_key(settings.api_key_file)) as api:
+    async with LawApiClient(resolve_api_key(settings, _app_secrets())) as api:
         service = SearchService(
             api, CacheStore(settings.cache_path), lambda: datetime.now(UTC)
         )

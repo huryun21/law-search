@@ -274,7 +274,7 @@ def test_search_client_is_closed_in_the_same_event_loop(monkeypatch, tmp_path):
             return "response"
 
     settings = app.Settings(tmp_path / "key.txt", tmp_path / "cache.db")
-    monkeypatch.setattr(app, "load_api_key", lambda path: "test-key")
+    monkeypatch.setattr(app, "resolve_api_key", lambda settings, secrets: "test-key")
     monkeypatch.setattr(app, "LawApiClient", Client)
     monkeypatch.setattr(app, "SearchService", Service)
     monkeypatch.setattr(app, "CacheStore", lambda path: object())
@@ -282,6 +282,37 @@ def test_search_client_is_closed_in_the_same_event_loop(monkeypatch, tmp_path):
     assert asyncio.run(app._search(settings, ParsedQuery("주차장"), True)) == "response"
     assert [event[0] for event in events] == ["created", "searched", "closed"]
     assert len({event[-1] for event in events}) == 1
+
+
+def test_app_secrets_returns_empty_without_a_secrets_file(monkeypatch):
+    import sys
+    import types
+
+    class _NoSecrets:
+        def __contains__(self, key):
+            raise RuntimeError("no secrets file")
+
+        def __getitem__(self, key):
+            raise RuntimeError("no secrets file")
+
+    monkeypatch.setitem(
+        sys.modules, "streamlit", types.SimpleNamespace(secrets=_NoSecrets())
+    )
+
+    assert app._app_secrets() == {}
+
+
+def test_app_secrets_reads_law_api_key_when_present(monkeypatch):
+    import sys
+    import types
+
+    monkeypatch.setitem(
+        sys.modules,
+        "streamlit",
+        types.SimpleNamespace(secrets={"LAW_API_KEY": "cloud-key"}),
+    )
+
+    assert app._app_secrets() == {"LAW_API_KEY": "cloud-key"}
 
 
 def test_launcher_contract_is_loopback_and_conditional_install():
