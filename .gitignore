@@ -11,3 +11,4 @@ __pycache__/
 task-7-report.md
 /work/
 .superpowers/
+.streamlit/secrets.toml
