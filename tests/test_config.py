@@ -2,7 +2,13 @@ from pathlib import Path
 
 import pytest
 
-from lawsearch.config import ConfigError, Settings, load_api_key, load_settings
+from lawsearch.config import (
+    ConfigError,
+    Settings,
+    load_api_key,
+    load_settings,
+    resolve_api_key,
+)
 
 
 def test_settings_store_only_external_key_path(tmp_path: Path):
@@ -93,3 +99,44 @@ def test_load_settings_still_rejects_a_malformed_config_file(tmp_path: Path):
 
     with pytest.raises(ConfigError, match="형식"):
         load_settings(tmp_path, {})
+
+
+def _settings_with_key_file(tmp_path: Path, contents: str = "file-key") -> Settings:
+    key_file = tmp_path / "law-key.txt"
+    key_file.write_text(contents, encoding="utf-8")
+    return Settings(api_key_file=key_file, cache_path=tmp_path / "data" / "cache.db")
+
+
+def test_resolve_api_key_prefers_secret_over_file(tmp_path: Path):
+    settings = _settings_with_key_file(tmp_path)
+
+    assert resolve_api_key(settings, {"LAW_API_KEY": " secret-key "}) == "secret-key"
+
+
+def test_resolve_api_key_falls_back_to_local_file(tmp_path: Path):
+    settings = _settings_with_key_file(tmp_path)
+
+    assert resolve_api_key(settings, {}) == "file-key"
+    assert resolve_api_key(settings, None) == "file-key"
+
+
+def test_resolve_api_key_ignores_blank_secret(tmp_path: Path):
+    settings = _settings_with_key_file(tmp_path)
+
+    assert resolve_api_key(settings, {"LAW_API_KEY": "   "}) == "file-key"
+
+
+def test_resolve_api_key_raises_when_no_source_available(tmp_path: Path):
+    settings = Settings(api_key_file=None, cache_path=tmp_path / "data" / "cache.db")
+
+    with pytest.raises(ConfigError):
+        resolve_api_key(settings, {})
+
+
+def test_resolve_api_key_labeled_file_still_selects_the_law_field(tmp_path: Path):
+    settings = _settings_with_key_file(
+        tmp_path,
+        "6. other: wrong\n7. 국가법령정보 공동활용: selected-law-value\n",
+    )
+
+    assert resolve_api_key(settings, None) == "selected-law-value"

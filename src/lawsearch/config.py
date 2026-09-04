@@ -63,3 +63,19 @@ def load_api_key(path: Path) -> str:
                 return field_value.strip()
         raise ConfigError("API 인증정보 파일에 국가법령정보 공동활용 항목이 없습니다.")
     return value
+
+
+def resolve_api_key(
+    settings: Settings, secrets: Mapping[str, str] | None = None
+) -> str:
+    """Return the API key from a Cloud secret, else the local key file."""
+    if secrets:
+        secret_value = secrets.get("LAW_API_KEY")
+        if secret_value is not None and str(secret_value).strip():
+            return str(secret_value).strip()
+    if settings.api_key_file is not None:
+        return load_api_key(settings.api_key_file)
+    raise ConfigError(
+        "API 인증정보가 없습니다. 로컬은 config.local.toml, "
+        "클라우드는 st.secrets의 LAW_API_KEY가 필요합니다."
+    )
