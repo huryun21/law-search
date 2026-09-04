@@ -38,10 +38,12 @@
 | 지역 검색 | @지역 문법, 후보 선택, 기초→광역→상위법 우선순위 | query.py, regions.py, ranking.py |
 | 정확도 | 정확/띄어쓰기/전 단어 일치 우선순위와 본문 상세 검증 | service.py, detail.py, tests/test_service.py |
 | 오탐 방지 | 본문 후보를 상세 조·항·호·목에서 재검증해 정확 문구가 없는 결과 제거 | SearchService._verify_body_results() |
-| 본문 문맥 | 최대 5개의 정확 일치 문맥을 조·항·호·목 위치와 함께 표시 | detail.extract_contexts() |
+| 본문 문맥 | 최대 5개(미리보기는 20개)의 정확 일치 문맥을 조·항·호·목 위치와 함께 표시 | detail.extract_contexts(), service.load_contexts() |
 | 캐시 | 검색목록과 상세본문을 분리한 SQLite 24시간 캐시, 강제 새로고침·stale fallback | cache.py, service.py |
 | 검색 제출 | 검색창에서 Enter로 제출 | app._render_search_form() |
-| 공식 링크 | HTTPS law.go.kr만 버튼으로 허용, 인증이 필요한 DRF 상세 링크는 공개 LSW 독자 페이지로 전환 | normalize.py, app.is_official_url() |
+| 순수 뷰모델 | 그룹·카드·사이드바·비교 목록·공식 URL 검증을 Streamlit 비의존 모듈로 분리 | src/lawsearch/viewmodels.py, tests/test_viewmodels.py |
+| 데스크톱 워크스페이스 | 폭 제한 2열 카드, 유형별 사이드바 바로가기, 단일 문서 미리보기(지연 로딩·캐시 재사용), 좌우 비교 | src/lawsearch/app.py, tests/test_app.py |
+| 공식 링크 | HTTPS law.go.kr만 버튼으로 허용, 인증이 필요한 DRF 상세 링크는 공개 LSW 독자 페이지로 전환 | normalize.py, viewmodels.is_official_url() |
 | 인증 보호 | 외부 키 파일만 런타임에 읽고, API 오류·캐시 응답에서 인증값을 제거 | config.py, api.py, cache.py |
 | 테스트 | 단위·통합(명시적 opt-in) 테스트 존재 | tests/ |
 
@@ -115,16 +117,21 @@ run.bat
 3. 제목 정확 일치 결과는 현재처럼 상세 조회를 미루고, 사용자가 열 때만 조회한다.
 4. 결과 렌더링과 본문 미리보기를 분리해 검색 결과가 먼저 보이게 한다.
 
-## 7. 사용자에게 약속했지만 아직 구현하지 않은 UI
+## 7. UI 구현 상태와 남은 작업
 
-아래 항목은 설계가 승인됐지만 현재 코드에는 아직 없다. 완료된 기능으로 설명하면 안 된다. 상세 설계는 [desktop search workspace spec](superpowers/specs/2026-09-03-desktop-search-workspace-design.md)에 있다.
+상세 설계는 [desktop search workspace spec](superpowers/specs/2026-09-03-desktop-search-workspace-design.md), 구현 계획은 [plan](superpowers/plans/2026-09-03-desktop-search-workspace-ui.md)에 있다.
 
-1. 넓고 빈 공간이 많은 세로 화면 대신, 최대 폭을 제한한 데스크톱 2열 카드 레이아웃.
-2. 법률·시행령·시행규칙·행정규칙·자치법규를 펼쳐 보는 사이드바. 사이드바는 결과를 숨기는 필터가 아니라 문서 바로가기여야 한다.
-3. 카드에서 한 문서를 열면, 이미 가져온 결과와 캐시를 재사용하는 본문 미리보기. 검색 결과로 돌아가도 다시 검색하지 않아야 한다.
-4. 기본 보기는 전체 결과가 계속 나열되고, 비교하기를 누르면 왼쪽과 오른쪽에서 현재 검색 결과 중 임의의 두 법규를 각각 선택해 정확 일치 문맥을 비교하는 화면.
-5. 비교 화면은 법률↔조례만이 아니라 모든 법규 유형 조합을 허용한다. 자동으로 위임관계·우선순위·법적 차이를 판단하면 안 된다.
-6. 모바일 UX는 우선순위가 낮다. 데스크톱을 완료한 뒤 좁은 폭에서 1열로 자연스럽게 재배치되는지 검증한다.
+구현 완료(2026-09-03):
+
+1. 최대 폭을 제한한 데스크톱 2열 카드 레이아웃.
+2. 법규 유형별 사이드바 바로가기. 결과를 숨기는 필터가 아니라 문서 바로가기이며 검색·상세 API를 호출하지 않는다.
+3. 카드·사이드바에서 문서를 열면 이미 가져온 결과와 캐시를 재사용하는 본문 미리보기. 검색 결과로 돌아가도 다시 검색하지 않는다.
+4. 상단 `비교하기`로 현재 검색 결과 중 임의의 두 법규를 좌우로 선택해 정확 일치 문맥을 비교. 모든 법규 유형 조합을 허용하며 위임관계·우선순위·법적 차이를 자동 판단하지 않는다.
+
+남은 작업:
+
+5. 좁은 폭에서 1열로 자연스럽게 재배치되는지 수동 검증(모바일 UX 우선순위는 낮음).
+6. Streamlit Community Cloud 비공개 배포(§8) — config.py 이중 인증, `streamlit_app.py`, `requirements.txt`. 별도 계획 필요.
 
 ## 8. 배포 상태와 권장 순서
 
@@ -153,7 +160,8 @@ Azure 이전은 이 앱의 검색·서비스·정확도 계층을 버리고 다�
 
 | 파일 | 역할 | 관련 테스트 |
 | --- | --- | --- |
-| src/lawsearch/app.py | Streamlit UI, Enter 제출, 지역 후보, 공식 링크 버튼 | tests/test_app.py |
+| src/lawsearch/app.py | Streamlit UI, view_mode 분기(결과/미리보기/비교), 세션 상태 | tests/test_app.py |
+| src/lawsearch/viewmodels.py | 순수 뷰모델: 그룹·카드·사이드바·비교 목록, 공식 URL 검증, detail_session_key | tests/test_viewmodels.py |
 | src/lawsearch/api.py | 국가법령 API 요청, 응답 인증값 제거 | tests/test_api.py, test_api_response_security.py |
 | src/lawsearch/cache.py | SQLite TTL 캐시와 인증값 방어 | tests/test_cache.py |
 | src/lawsearch/config.py | 로컬 키 파일과 캐시 경로 | tests/test_config.py |
@@ -162,7 +170,7 @@ Azure 이전은 이 앱의 검색·서비스·정확도 계층을 버리고 다�
 | src/lawsearch/query.py | @지역 파싱 | tests/test_query.py |
 | src/lawsearch/ranking.py | 일치도·지역·현행 우선순위 | tests/test_ranking.py |
 | src/lawsearch/regions.py | 지역 코드와 후보 해석 | tests/test_regions.py |
-| src/lawsearch/service.py | 자료원 병렬 검색, 본문 검증, 캐시 | tests/test_service.py |
+| src/lawsearch/service.py | 자료원 병렬 검색, 본문 검증, 검증 첫 문맥을 match_context에 전달, 캐시 | tests/test_service.py |
 
 ## 10. Claude Code가 시작할 때의 절차
 

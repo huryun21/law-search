@@ -2,7 +2,13 @@ from datetime import UTC, datetime
 
 import pytest
 
-from lawsearch.models import SearchResponse, SourceState
+from lawsearch.models import (
+    MatchQuality,
+    SearchResponse,
+    SearchResult,
+    SourceGroup,
+    SourceState,
+)
 
 
 def make_response(states, fetched_at):
@@ -49,3 +55,22 @@ def test_retrieval_timestamp_must_be_timezone_aware():
             {"laws": SourceState.LIVE},
             {"laws": datetime(2026, 8, 11)},
         )
+
+
+def test_search_result_defaults_match_context_to_none():
+    result = SearchResult(
+        uid="001498",
+        source=SourceGroup.LAW,
+        quality=MatchQuality.EXACT,
+        title="주차장법",
+        category="법률",
+        authority=None,
+        region_name=None,
+        promulgation_date=None,
+        effective_date=None,
+        is_current=True,
+        official_url="https://www.law.go.kr/example",
+        fetched_at=datetime(2026, 8, 11, tzinfo=UTC),
+    )
+
+    assert result.match_context is None

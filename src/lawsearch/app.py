@@ -1,15 +1,14 @@
-"""Pure view models and the local Streamlit application."""
+"""The local Streamlit application.
+
+Rendering-independent logic lives in :mod:`lawsearch.viewmodels`.
+"""
 
 from __future__ import annotations
 
 import asyncio
-import hashlib
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, TypeVar
-from urllib.parse import urlsplit
-from zoneinfo import ZoneInfo
 
 from lawsearch.api import LawApiClient
 from lawsearch.cache import CacheStore
@@ -19,260 +18,76 @@ from lawsearch.models import (
     Region,
     SearchResponse,
     SearchResult,
-    SearchScope,
-    SourceGroup,
     SourceState,
 )
 from lawsearch.query import QueryError, parse_query
 from lawsearch.regions import RegionRegistry
 from lawsearch.service import SearchService
+from lawsearch.viewmodels import (
+    CardView,
+    CompareOption,
+    build_error_messages,
+    build_grouped_view,
+    card_rows,
+    compare_options,
+    detail_session_key,
+    format_timestamp,
+    fully_qualified_region_name,
+    is_official_url,
+    sidebar_sections,
+)
 
 if TYPE_CHECKING:
     import streamlit as st
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_SEOUL = ZoneInfo("Asia/Seoul")
-_SOURCE_ORDER = (
-    SourceGroup.MUNICIPAL,
-    SourceGroup.PROVINCIAL,
-    SourceGroup.LAW,
-    SourceGroup.DECREE,
-    SourceGroup.MINISTERIAL_RULE,
-    SourceGroup.ADMIN_RULE,
-    SourceGroup.OTHER,
-)
-_SOURCE_KEYS = {
-    SourceGroup.MUNICIPAL: "municipal",
-    SourceGroup.PROVINCIAL: "provincial",
-    SourceGroup.LAW: "laws",
-    SourceGroup.DECREE: "laws",
-    SourceGroup.MINISTERIAL_RULE: "laws",
-    SourceGroup.ADMIN_RULE: "admin_rules",
-    SourceGroup.OTHER: "laws",
-}
-_DEFAULT_LABELS = {
-    SourceGroup.MUNICIPAL: "기초지자체 자치법규",
-    SourceGroup.PROVINCIAL: "광역지자체 자치법규",
-    SourceGroup.LAW: "법률",
-    SourceGroup.DECREE: "대통령령",
-    SourceGroup.MINISTERIAL_RULE: "부령",
-    SourceGroup.ADMIN_RULE: "행정규칙",
-    SourceGroup.OTHER: "기타 법령",
-}
-_SOURCE_LABELS = {
-    "laws": "법령",
-    "admin_rules": "행정규칙",
-    "municipal": "기초지자체 자치법규",
-    "provincial": "광역지자체 자치법규",
-    "terms": "법령용어",
-}
-_STATE_MESSAGES = {
-    SourceState.LIVE: "공식 API에서 방금 조회한 결과",
-    SourceState.FRESH_CACHE: "24시간 이내 저장된 결과",
-    SourceState.EMPTY: "검색 결과 없음",
-    SourceState.ERROR: "이 출처를 조회하지 못했습니다. 다시 시도해 주세요.",
-}
 _T = TypeVar("_T")
 
-
-@dataclass(frozen=True)
-class ResultGroupView:
-    label: str
-    results: tuple[SearchResult, ...]
-    state: SourceState
-    status_message: str
-    fetched_at: datetime | None
-    expanded: bool
-
-
-def build_grouped_view(
-    response: SearchResponse, region: Region | None = None
-) -> tuple[ResultGroupView, ...]:
-    """Build source groups without depending on Streamlit state."""
-    grouped: list[tuple[int, ResultGroupView]] = []
-    represented_sources: set[str] = set()
-    regional_sources = {SourceGroup.MUNICIPAL, SourceGroup.PROVINCIAL}
-    has_national_title_results = any(
-        item.scope is SearchScope.TITLE and item.source not in regional_sources
-        for item in response.results
-    )
-    for priority, source in enumerate(_SOURCE_ORDER):
-        source_results = tuple(
-            item for item in response.results if item.source is source
-        )
-        if not source_results:
-            continue
-        source_key = _SOURCE_KEYS[source]
-        state = response.source_states.get(source_key, SourceState.EMPTY)
-        fetched_at = response.source_fetched_at.get(
-            source_key, min(item.fetched_at for item in source_results)
-        )
-        label = _group_label(source, source_results, region)
-        title_results = tuple(
-            item for item in source_results if item.scope is SearchScope.TITLE
-        )
-        body_results = tuple(
-            item for item in source_results if item.scope is SearchScope.BODY
-        )
-        is_regional_source = region is not None and source in regional_sources
-        if region is not None:
-            title_priority = (
-                priority * 2
-                if is_regional_source
-                else 4 + priority - len(regional_sources)
-            )
-        else:
-            title_priority = priority
-        if title_results:
-            grouped.append(
-                (
-                    title_priority,
-                    ResultGroupView(
-                        label=label,
-                        results=title_results,
-                        state=state,
-                        status_message=_status_message(state, fetched_at),
-                        fetched_at=fetched_at,
-                        expanded=True,
-                    ),
-                )
-            )
-        if body_results:
-            is_additional = (
-                bool(title_results)
-                if is_regional_source
-                else has_national_title_results
-            )
-            if is_regional_source:
-                body_priority = title_priority + 1
-            elif region is not None and is_additional:
-                national_source_count = len(_SOURCE_ORDER) - len(regional_sources)
-                body_priority = title_priority + national_source_count
-            else:
-                body_priority = (
-                    len(_SOURCE_ORDER) + priority
-                    if is_additional
-                    else title_priority
-                )
-            grouped.append(
-                (
-                    body_priority,
-                    ResultGroupView(
-                        label=(
-                            f"{label} · 본문 관련 추가 결과"
-                            if is_additional
-                            else label
-                        ),
-                        results=body_results,
-                        state=state,
-                        status_message=_status_message(state, fetched_at),
-                        fetched_at=fetched_at,
-                        expanded=not is_additional,
-                    ),
-                )
-            )
-        represented_sources.add(source_key)
-    source_priority = {
-        "municipal": 0,
-        "provincial": 2,
-        "laws": 4,
-        "admin_rules": 10,
-    }
-    for source_key in ("municipal", "provincial", "laws", "admin_rules"):
-        if source_key not in response.source_states or source_key in represented_sources:
-            continue
-        state = response.source_states[source_key]
-        fetched_at = response.source_fetched_at.get(source_key)
-        grouped.append(
-            (
-                source_priority[source_key],
-                ResultGroupView(
-                    label=_empty_source_label(source_key, region),
-                    results=(),
-                    state=state,
-                    status_message=_status_message(state, fetched_at),
-                    fetched_at=fetched_at,
-                    expanded=False,
-                ),
-            )
-        )
-    return tuple(view for _, view in sorted(grouped, key=lambda item: item[0]))
+_VIEW_RESULTS = "results"
+_VIEW_PREVIEW = "preview"
+_VIEW_COMPARE = "compare"
+_WORKSPACE_KEYS = (
+    "view_mode",
+    "selected_result_key",
+    "compare_left_result_key",
+    "compare_right_result_key",
+    "compare_left_article",
+    "compare_right_article",
+)
 
 
-def build_error_messages(response: SearchResponse) -> tuple[str, ...]:
-    return tuple(
-        f"{_SOURCE_LABELS.get(error.source, '공식 자료')}: "
-        "조회하지 못했습니다. 새로고침으로 다시 시도해 주세요."
-        for error in response.errors
-    )
+def _view_mode(st: Any) -> str:
+    return st.session_state.get("view_mode", _VIEW_RESULTS)
 
 
-def detail_session_key(source: SourceGroup, uid: str, keyword: str) -> str:
-    normalized = " ".join(keyword.split()).casefold()
-    query_id = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
-    return f"detail-{source.value}-{uid}-{query_id}"
+def _reset_workspace(st: Any) -> None:
+    for key in _WORKSPACE_KEYS:
+        st.session_state.pop(key, None)
 
 
-def fully_qualified_region_name(region: Region) -> str:
-    if region.municipality_name is None:
-        return region.province_name
-    return f"{region.province_name} / {region.municipality_name}"
+def _clear_detail_state(st: Any) -> None:
+    stale = [
+        key
+        for key in list(st.session_state)
+        if isinstance(key, str) and key.startswith("detail-")
+    ]
+    for key in stale:
+        st.session_state.pop(key, None)
 
 
-def is_official_url(value: str) -> bool:
-    try:
-        parsed = urlsplit(value)
-        port = parsed.port
-    except ValueError:
-        return False
-    host = (parsed.hostname or "").casefold().rstrip(".")
-    return (
-        parsed.scheme == "https"
-        and parsed.username is None
-        and parsed.password is None
-        and port in {None, 443}
-        and (host == "law.go.kr" or host.endswith(".law.go.kr"))
-    )
+def _open_preview(st: Any, key: str) -> None:
+    st.session_state.view_mode = _VIEW_PREVIEW
+    st.session_state.selected_result_key = key
 
 
-def _group_label(
-    source: SourceGroup, results: tuple[SearchResult, ...], region: Region | None
-) -> str:
-    if source not in {SourceGroup.MUNICIPAL, SourceGroup.PROVINCIAL}:
-        return _DEFAULT_LABELS[source]
-    if region is not None:
-        if source is SourceGroup.MUNICIPAL and region.municipality_name:
-            return f"{region.municipality_name} 자치법규"
-        if source is SourceGroup.PROVINCIAL:
-            return f"{region.province_name} 자치법규"
-    region_name = next((item.region_name for item in results if item.region_name), None)
-    if region_name:
-        return f"{region_name} 자치법규"
-    return _empty_source_label(_SOURCE_KEYS[source], region)
+def _open_results(st: Any) -> None:
+    st.session_state.view_mode = _VIEW_RESULTS
+    st.session_state.pop("selected_result_key", None)
 
 
-def _empty_source_label(source_key: str, region: Region | None) -> str:
-    if region is not None and source_key == "municipal" and region.municipality_name:
-        return f"{region.municipality_name} 자치법규"
-    if region is not None and source_key == "provincial":
-        return f"{region.province_name} 자치법규"
-    return _SOURCE_LABELS[source_key]
-
-
-def _status_message(state: SourceState, fetched_at: datetime | None) -> str:
-    if state is SourceState.STALE_FALLBACK:
-        if fetched_at is None:
-            raise ValueError("stale fallback requires a retrieval timestamp")
-        return (
-            "공식 API 오류로 이전 결과를 표시합니다. "
-            f"조회 시각: {_format_timestamp(fetched_at)}"
-        )
-    return _STATE_MESSAGES[state]
-
-
-def _format_timestamp(value: datetime) -> str:
-    return value.astimezone(_SEOUL).strftime("%Y-%m-%d %H:%M:%S KST")
+def _open_compare(st: Any) -> None:
+    st.session_state.view_mode = _VIEW_COMPARE
 
 
 def _run(awaitable: Awaitable[_T]) -> _T:
@@ -287,11 +102,20 @@ async def _search(settings: Settings, parsed: ParsedQuery, refresh: bool) -> Sea
 
 
 async def _contexts(
-    settings: Settings, result: SearchResult, keyword: str, refresh: bool = False
+    settings: Settings,
+    result: SearchResult,
+    keyword: str,
+    *,
+    refresh: bool = False,
+    limit: int = 5,
 ):
     async with LawApiClient(load_api_key(settings.api_key_file)) as api:
-        service = SearchService(api, CacheStore(settings.cache_path), lambda: datetime.now(UTC))
-        return await service.load_contexts(result, keyword, refresh=refresh)
+        service = SearchService(
+            api, CacheStore(settings.cache_path), lambda: datetime.now(UTC)
+        )
+        return await service.load_contexts(
+            result, keyword, refresh=refresh, limit=limit
+        )
 
 
 def _load_resources(streamlit: Any) -> tuple[Settings, RegionRegistry]:
@@ -319,14 +143,44 @@ def _render_search_form(streamlit: Any) -> tuple[str, bool]:
     return raw, submitted
 
 
+_CONTENT_MAX_WIDTH_PX = 1100
+
+
+def _inject_layout_css(st: Any) -> None:
+    st.markdown(
+        f"<style>.block-container{{max-width:{_CONTENT_MAX_WIDTH_PX}px;}}</style>",
+        unsafe_allow_html=True,
+    )
+
+
+def _render_top_bar(st: Any) -> None:
+    st.title("대한민국 법령 통합검색")
+    st.caption("예: `주차장법`, `@평택 주차장`, `@경기/평택 주차장`")
+    st.caption("출처: 국가법령정보센터 · 참고자료이며 최종 확인은 공식 원문 및 소관기관 기준")
+    if "response" not in st.session_state:
+        return
+    mode = _view_mode(st)
+    results_col, compare_col = st.columns(2)
+    if results_col.button(
+        "기본 보기", disabled=mode == _VIEW_RESULTS, width="stretch"
+    ):
+        _open_results(st)
+        st.rerun()
+    if compare_col.button(
+        "비교하기", disabled=mode == _VIEW_COMPARE, width="stretch"
+    ):
+        _open_compare(st)
+        st.rerun()
+
+
 def main() -> None:
     import streamlit as st
 
-    st.set_page_config(page_title="대한민국 법령 통합검색", page_icon="⚖️", layout="wide")
-    st.title("대한민국 법령 통합검색")
-    st.caption("예: `주차장법`, `@평택 주차장`, `@경기/평택 주차장`")
-    st.info("출처: 국가법령정보센터")
-    st.warning("참고자료이며 최종 확인은 공식 원문 및 소관기관 기준")
+    st.set_page_config(
+        page_title="대한민국 법령 통합검색", page_icon="⚖️", layout="wide"
+    )
+    _inject_layout_css(st)
+    _render_top_bar(st)
 
     try:
         settings, registry = _load_resources(st)
@@ -340,11 +194,13 @@ def main() -> None:
         chip.markdown(f"**선택 지역:** `{fully_qualified_region_name(selected)}`")
         if clear.button("지역 지우기"):
             st.session_state.pop("selected_region", None)
-            st.session_state.pop("response", None)
+            _clear_response(st)
             st.rerun()
 
     raw, search_clicked = _render_search_form(st)
-    refresh_clicked = st.button("공식 API에서 새로고침") if "response" in st.session_state else False
+    refresh_clicked = (
+        st.button("공식 API에서 새로고침") if "response" in st.session_state else False
+    )
 
     if search_clicked:
         _handle_search(st, raw, registry, settings, refresh=False)
@@ -363,8 +219,18 @@ def main() -> None:
             )
 
     response = st.session_state.get("response")
-    if response is not None:
-        _render_response(st, settings, response, st.session_state["parsed_query"])
+    if response is None:
+        return
+    parsed = st.session_state["parsed_query"]
+    with st.sidebar:
+        _render_sidebar(st, response, parsed)
+    mode = _view_mode(st)
+    if mode == _VIEW_PREVIEW:
+        _render_preview(st, settings, response, parsed)
+    elif mode == _VIEW_COMPARE:
+        _render_compare(st, settings, response, parsed)
+    else:
+        _render_results(st, settings, response, parsed)
 
 
 def _handle_search(st: Any, raw: str, registry: RegionRegistry, settings: Settings, refresh: bool) -> None:
@@ -405,6 +271,8 @@ def _clear_ambiguity(st: Any) -> None:
 def _clear_response(st: Any) -> None:
     st.session_state.pop("response", None)
     st.session_state.pop("parsed_query", None)
+    _reset_workspace(st)
+    _clear_detail_state(st)
 
 
 def _perform_search(st: Any, settings: Settings, parsed: ParsedQuery, refresh: bool) -> None:
@@ -422,7 +290,7 @@ def _perform_search(st: Any, settings: Settings, parsed: ParsedQuery, refresh: b
     st.session_state.response = response
 
 
-def _render_response(
+def _render_results(
     st: Any, settings: Settings, response: SearchResponse, parsed: ParsedQuery
 ) -> None:
     if response.suggestions:
@@ -430,52 +298,192 @@ def _render_response(
     for message in build_error_messages(response):
         st.error(message)
     for group in build_grouped_view(response, parsed.region):
-        with st.expander(
-            f"{group.label} ({len(group.results)})", expanded=group.expanded
-        ):
-            if group.state is SourceState.STALE_FALLBACK:
-                st.warning(group.status_message)
-            elif group.state is SourceState.ERROR:
-                st.error(group.status_message)
-                st.caption("위의 새로고침 버튼으로 이 출처를 다시 조회할 수 있습니다.")
-            else:
-                st.caption(group.status_message)
-            for result in group.results:
-                _render_result(st, settings, result, parsed.keyword)
+        st.subheader(f"{group.label} ({len(group.results)})")
+        if group.state is SourceState.STALE_FALLBACK:
+            st.warning(group.status_message)
+        elif group.state is SourceState.ERROR:
+            st.error(group.status_message)
+            st.caption("위의 새로고침 버튼으로 이 출처를 다시 조회할 수 있습니다.")
+        else:
+            st.caption(group.status_message)
+        for row in card_rows(group.results, columns=2):
+            columns = st.columns(2)
+            for column, card in zip(columns, row):
+                with column:
+                    _render_card(st, card, parsed.keyword)
 
 
-def _render_result(st: Any, settings: Settings, result: SearchResult, keyword: str) -> None:
-    st.markdown(f"#### {result.title}")
-    fields = [result.category]
+def _render_card(st: Any, card: CardView, keyword: str) -> None:
+    with st.container(border=True):
+        st.markdown(f"**{card.title}**")
+        st.caption(" · ".join(card.meta_fields))
+        st.caption(card.match_kind)
+        if card.match_line:
+            st.markdown(f"> {card.match_line}")
+        preview_col, official_col = st.columns(2)
+        if preview_col.button("미리보기", key=f"preview-{card.key}", width="stretch"):
+            _open_preview(st, card.key)
+            st.rerun()
+        if card.official_url:
+            official_col.link_button("공식 원문", card.official_url, width="stretch")
+
+
+def _render_sidebar(
+    st: Any, response: SearchResponse, parsed: ParsedQuery
+) -> None:
+    for section in sidebar_sections(response, parsed.region):
+        st.subheader(section.label)
+        for group in section.groups:
+            with st.expander(f"{group.label} ({group.count})"):
+                for entry in group.entries:
+                    if st.button(
+                        entry.title, key=f"nav-{entry.key}", width="stretch"
+                    ):
+                        _open_preview(st, entry.key)
+                        st.rerun()
+
+
+_PREVIEW_CONTEXT_LIMIT = 20
+
+
+def _find_result(response: SearchResponse, key: str | None) -> SearchResult | None:
+    if key is None:
+        return None
+    for result in response.results:
+        if f"{result.source.value}:{result.uid}" == key:
+            return result
+    return None
+
+
+def _preview_detail(
+    st: Any, settings: Settings, result: SearchResult, keyword: str
+):
+    session_key = detail_session_key(result.source, result.uid, keyword)
+    cached = st.session_state.get(session_key)
+    if cached is not None:
+        return cached
+    try:
+        detail = _run(
+            _contexts(settings, result, keyword, limit=_PREVIEW_CONTEXT_LIMIT)
+        )
+    except Exception:
+        st.error("본문을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.")
+        return None
+    st.session_state[session_key] = detail
+    return detail
+
+
+def _render_preview(
+    st: Any, settings: Settings, response: SearchResponse, parsed: ParsedQuery
+) -> None:
+    result = _find_result(response, st.session_state.get("selected_result_key"))
+    if result is None:
+        _open_results(st)
+        st.rerun()
+        return
+    if st.button("← 검색 결과로 돌아가기", key="preview-back"):
+        _open_results(st)
+        st.rerun()
+    st.markdown(f"### {result.title}")
+    meta = [result.category]
     if result.authority:
-        fields.append(result.authority)
-    fields.append("현행" if result.is_current else "연혁")
-    if result.promulgation_date:
-        fields.append(f"공포 {result.promulgation_date.isoformat()}")
+        meta.append(result.authority)
+    meta.append("현행" if result.is_current else "연혁")
     if result.effective_date:
-        fields.append(f"시행 {result.effective_date.isoformat()}")
-    st.caption(" · ".join(fields))
+        meta.append(f"시행 {result.effective_date.isoformat()}")
+    st.caption(" · ".join(meta))
     if is_official_url(result.official_url):
         st.link_button("공식 원문 열기", result.official_url)
+
+    detail = _preview_detail(st, settings, result, parsed.keyword)
+    if detail is None:
+        return
+    if detail.state is SourceState.ERROR:
+        st.error("본문을 불러오지 못했습니다.")
+        return
+    if not detail.contexts:
+        st.caption("검색어와 정확히 일치하는 조문이 없습니다.")
+        return
+    if detail.state is SourceState.STALE_FALLBACK:
+        st.warning(
+            f"이전 본문 결과 · 조회 시각 {format_timestamp(detail.fetched_at)}"
+        )
+    st.caption(f"정확히 일치하는 조문 {len(detail.contexts)}건")
+    if len(detail.contexts) > 1:
+        labels = [context.split(" — ", 1)[0] for context in detail.contexts]
+        index = st.radio(
+            "조문 선택",
+            range(len(detail.contexts)),
+            format_func=lambda position: labels[position],
+            key="preview-article",
+        )
     else:
-        st.caption("공식 링크를 확인할 수 없습니다.")
-    detail_key = detail_session_key(result.source, result.uid, keyword)
-    if st.button("본문 일치 보기", key=f"load-{detail_key}"):
-        try:
-            st.session_state[detail_key] = _run(_contexts(settings, result, keyword))
-        except Exception:
-            st.error("본문을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.")
-    detail = st.session_state.get(detail_key)
-    if detail is not None:
-        if detail.state is SourceState.STALE_FALLBACK:
-            st.warning(f"이전 본문 결과 · 조회 시각 {_format_timestamp(detail.fetched_at)}")
-        elif detail.state is SourceState.ERROR:
+        index = 0
+    st.markdown(f"> {detail.contexts[index]}")
+
+
+def _render_compare(
+    st: Any, settings: Settings, response: SearchResponse, parsed: ParsedQuery
+) -> None:
+    options = compare_options(response)
+    if len(options) < 2:
+        st.info("비교하려면 검색 결과가 2건 이상 필요합니다.")
+        return
+    st.caption(
+        "키워드 일치 조문을 나란히 표시하며 법적 연계 관계를 자동 확정하지 않습니다."
+    )
+    left_col, right_col = st.columns(2)
+    _render_compare_side(st, settings, response, parsed, options, left_col, "left")
+    _render_compare_side(st, settings, response, parsed, options, right_col, "right")
+
+
+def _render_compare_side(
+    st: Any,
+    settings: Settings,
+    response: SearchResponse,
+    parsed: ParsedQuery,
+    options: tuple[CompareOption, ...],
+    column: Any,
+    side: str,
+) -> None:
+    labels = {option.label: option.key for option in options}
+    with column:
+        chosen_label = st.selectbox(
+            "왼쪽 문서" if side == "left" else "오른쪽 문서",
+            tuple(labels),
+            key=f"compare-{side}",
+        )
+        key = labels[chosen_label]
+        st.session_state[f"compare_{side}_result_key"] = key
+        result = _find_result(response, key)
+        if result is None:
+            st.error("문서를 찾을 수 없습니다.")
+            return
+        meta = [result.category]
+        if result.authority:
+            meta.append(result.authority)
+        meta.append("현행" if result.is_current else "연혁")
+        st.caption(" · ".join(meta))
+        if is_official_url(result.official_url):
+            st.link_button("공식 원문 열기", result.official_url)
+        detail = _preview_detail(st, settings, result, parsed.keyword)
+        if detail is None or detail.state is SourceState.ERROR:
             st.error("본문을 불러오지 못했습니다.")
-        elif not detail.contexts:
-            st.caption("검색어와 일치하는 본문 구간이 없습니다.")
-        for context in detail.contexts[:5]:
-            st.markdown(f"> {context}")
-    st.divider()
+            return
+        if not detail.contexts:
+            st.caption("검색어와 정확히 일치하는 조문이 없습니다.")
+            return
+        if len(detail.contexts) > 1:
+            article_labels = [c.split(" — ", 1)[0] for c in detail.contexts]
+            index = st.radio(
+                "조문 선택",
+                range(len(detail.contexts)),
+                format_func=lambda position: article_labels[position],
+                key=f"compare-{side}-article",
+            )
+        else:
+            index = 0
+        st.markdown(f"> {detail.contexts[index]}")
 
 
 if __name__ == "__main__":

@@ -7,7 +7,14 @@ import pytest
 
 from lawsearch.api import ApiError
 from lawsearch.cache import CacheStore, make_cache_key
-from lawsearch.models import MatchQuality, ParsedQuery, Region, SearchResult, SourceGroup
+from lawsearch.models import (
+    MatchQuality,
+    ParsedQuery,
+    Region,
+    SearchResult,
+    SearchScope,
+    SourceGroup,
+)
 from lawsearch.regions import RegionRegistry
 
 
@@ -37,6 +44,8 @@ def result_factory():
         effective: str | None = "20260811",
         current: bool = True,
         title: str | None = None,
+        scope: SearchScope = SearchScope.BODY,
+        match_context: str | None = None,
     ) -> SearchResult:
         effective_date = (
             date.fromisoformat(f"{effective[:4]}-{effective[4:6]}-{effective[6:]}")
@@ -56,6 +65,8 @@ def result_factory():
             is_current=current,
             official_url="https://www.law.go.kr/example",
             fetched_at=datetime(2026, 8, 11, tzinfo=UTC),
+            scope=scope,
+            match_context=match_context,
         )
 
     return make_result

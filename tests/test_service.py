@@ -603,6 +603,46 @@ def test_body_verification_failure_never_exposes_unverified_results(
     assert {error.source for error in response.errors} == {"laws", "admin_rules"}
 
 
+def test_body_verified_results_carry_their_first_exact_context(
+    service_factory, parsed_plain
+):
+    service, _ = service_factory()
+
+    response = run(service.search(parsed_plain))
+
+    body_hits = [r for r in response.results if r.scope is SearchScope.BODY]
+    assert body_hits
+    assert all(r.match_context and " — " in r.match_context for r in body_hits)
+
+
+def test_title_matched_results_keep_match_context_none(
+    service_factory, parsed_plain, load_fixture
+):
+    title_payload = load_fixture("law-single.json")
+    title_payload["LawSearch"]["law"]["법령명한글"] = "주차 단속법"
+    service, _ = service_factory(
+        responses={("laws_titles", "주차 단속"): title_payload}
+    )
+
+    response = run(service.search(parsed_plain))
+
+    law = next(
+        r
+        for r in response.results
+        if r.uid == "001498" and r.scope is SearchScope.TITLE
+    )
+    assert law.match_context is None
+
+
+def test_load_contexts_limit_is_forwarded(service_factory, result_factory):
+    service, _ = service_factory()
+    result = result_factory(SourceGroup.LAW, uid="001498")
+
+    one = run(service.load_contexts(result, "주차", limit=1))
+
+    assert len(one.contexts) <= 1
+
+
 def test_token_intersection_runs_only_after_both_variants_are_empty(
     service_factory, parsed_plain, load_fixture
 ):
