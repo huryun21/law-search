@@ -649,3 +649,67 @@ def test_compare_allows_same_source_on_both_sides(monkeypatch, result_factory):
 
     assert streamlit.session_state["compare_left_result_key"] == "law:l0"
     assert streamlit.session_state["compare_right_result_key"] == "law:l1"
+
+
+def test_workspace_controls_render_mode_toggle(result_factory):
+    streamlit = FakeStreamlit(
+        session_state={"response": _card_response(result_factory), "view_mode": "results"}
+    )
+
+    app._render_workspace_controls(streamlit, object(), ParsedQuery("주차장"))
+
+    labels = [args[0] for name, args, _ in streamlit.calls if name == "button"]
+    assert "기본 보기" in labels
+    assert "비교하기" in labels
+
+
+def test_workspace_controls_compare_button_switches_mode(result_factory):
+    streamlit = FakeStreamlit(
+        session_state={"response": _card_response(result_factory), "view_mode": "results"},
+        buttons={"비교하기": True},
+    )
+
+    with pytest.raises(Rerun):
+        app._render_workspace_controls(streamlit, object(), ParsedQuery("주차장"))
+
+    assert streamlit.session_state["view_mode"] == "compare"
+
+
+def test_workspace_controls_refresh_reruns_the_saved_query(monkeypatch, result_factory):
+    parsed = ParsedQuery("주차장")
+    streamlit = FakeStreamlit(
+        session_state={"response": _card_response(result_factory), "parsed_query": parsed},
+        buttons={"공식 API에서 새로고침": True},
+    )
+    calls = []
+    monkeypatch.setattr(
+        app, "_perform_search", lambda st, s, p, refresh: calls.append((p, refresh))
+    )
+
+    with pytest.raises(Rerun):
+        app._render_workspace_controls(streamlit, object(), parsed)
+
+    assert calls == [(parsed, True)]
+
+
+def test_card_match_line_is_escaped_and_clamped(result_factory):
+    hit = replace(
+        result_factory(SourceGroup.LAW, uid="l1", title="건축법"),
+        scope=SearchScope.BODY,
+        match_context="제49조 — 별도로 정할 수 있다. <개정 2013.3.23>",
+    )
+    response = SearchResponse(
+        results=(hit,),
+        suggestions=(),
+        errors=(),
+        source_states={"laws": SourceState.LIVE},
+        source_fetched_at={"laws": _fetched()},
+    )
+    streamlit = FakeStreamlit()
+
+    app._render_results(streamlit, object(), response, ParsedQuery("방화구획"))
+
+    markdowns = [args[0] for name, args, _ in streamlit.calls if name == "markdown"]
+    match_md = next(m for m in markdowns if "match-line" in m)
+    assert "&lt;개정 2013.3.23&gt;" in match_md
+    assert "<개정" not in match_md

@@ -6,6 +6,7 @@ Rendering-independent logic lives in :mod:`lawsearch.viewmodels`.
 from __future__ import annotations
 
 import asyncio
+import html
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Mapping, TypeVar
@@ -160,7 +161,12 @@ _CONTENT_MAX_WIDTH_PX = 1100
 
 def _inject_layout_css(st: Any) -> None:
     st.markdown(
-        f"<style>.block-container{{max-width:{_CONTENT_MAX_WIDTH_PX}px;}}</style>",
+        "<style>"
+        f".block-container{{max-width:{_CONTENT_MAX_WIDTH_PX}px;}}"
+        ".match-line{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;"
+        "overflow:hidden;font-size:0.85rem;line-height:1.4;opacity:0.75;"
+        "border-left:3px solid rgba(128,128,128,0.35);padding-left:0.6rem;margin:0.2rem 0;}"
+        "</style>",
         unsafe_allow_html=True,
     )
 
@@ -169,8 +175,15 @@ def _render_top_bar(st: Any) -> None:
     st.title("대한민국 법령 통합검색")
     st.caption("예: `주차장법`, `@평택 주차장`, `@경기/평택 주차장`")
     st.caption("출처: 국가법령정보센터 · 참고자료이며 최종 확인은 공식 원문 및 소관기관 기준")
-    if "response" not in st.session_state:
-        return
+
+
+def _render_workspace_controls(
+    st: Any, settings: Settings, parsed: ParsedQuery
+) -> None:
+    """Refresh + view-mode toggle. Rendered only once a response exists."""
+    if st.button("공식 API에서 새로고침"):
+        _perform_search(st, settings, parsed, refresh=True)
+        st.rerun()
     mode = _view_mode(st)
     results_col, compare_col = st.columns(2)
     if results_col.button(
@@ -210,16 +223,9 @@ def main() -> None:
             st.rerun()
 
     raw, search_clicked = _render_search_form(st)
-    refresh_clicked = (
-        st.button("공식 API에서 새로고침") if "response" in st.session_state else False
-    )
 
     if search_clicked:
         _handle_search(st, raw, registry, settings, refresh=False)
-    if refresh_clicked:
-        saved = st.session_state.get("parsed_query")
-        if saved is not None:
-            _perform_search(st, settings, saved, refresh=True)
 
     candidates = st.session_state.get("region_candidates", ())
     if candidates:
@@ -234,6 +240,7 @@ def main() -> None:
     if response is None:
         return
     parsed = st.session_state["parsed_query"]
+    _render_workspace_controls(st, settings, parsed)
     with st.sidebar:
         _render_sidebar(st, response, parsed)
     mode = _view_mode(st)
@@ -331,7 +338,10 @@ def _render_card(st: Any, card: CardView, keyword: str) -> None:
         st.caption(" · ".join(card.meta_fields))
         st.caption(card.match_kind)
         if card.match_line:
-            st.markdown(f"> {card.match_line}")
+            st.markdown(
+                f"<div class='match-line'>{html.escape(card.match_line)}</div>",
+                unsafe_allow_html=True,
+            )
         preview_col, official_col = st.columns(2)
         if preview_col.button("미리보기", key=f"preview-{card.key}", width="stretch"):
             _open_preview(st, card.key)
