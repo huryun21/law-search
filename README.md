@@ -1,4 +1,6 @@
-# 대한민국 법령 통합검색기
+# law-search
+제목: 대한민국 법령 통합검색기
+Drive: https://drive.google.com/drive/folders/12FqdDgJsdCDSUdtndb8mjbshgr7xfevr
 
 국가법령정보센터 공동활용 API에서 현행 법령, 행정규칙, 법령용어와 선택 지역의 자치법규를 함께 찾는 Windows용 로컬 Streamlit 앱입니다. AI 요약이나 법률적 판단은 제공하지 않습니다.
 
