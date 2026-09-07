@@ -120,6 +120,24 @@ def test_ordinance_law_service_shape_returns_article_heading():
     )
 
 
+def test_admin_rule_flat_article_content_list_returns_article_heading():
+    payload = {
+        "AdmRulService": {
+            "행정규칙기본정보": {"행정규칙명": "교육시설의 안전·유지관리기준"},
+            "조문내용": [
+                "제1조(목적) 이 기준은 교육시설의 안전 및 유지관리에 필요한 사항을 정한다.",
+                "제2조(용어) 18. \"방화구획\"이란 화재가 건축물 전체로 확산되지 않도록 "
+                "만들어지는 구획을 말한다.",
+            ],
+        }
+    }
+
+    assert extract_contexts(payload, "방화구획") == (
+        "제2조(용어) — "
+        "18. \"방화구획\"이란 화재가 건축물 전체로 확산되지 않도록 만들어지는 구획을 말한다.",
+    )
+
+
 def test_non_article_metadata_is_not_returned_as_a_context():
     payload = {
         "법령": {

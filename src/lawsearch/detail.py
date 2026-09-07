@@ -68,6 +68,13 @@ def _article_units(value: Any) -> Iterable[Mapping[str, Any]]:
             for unit in _as_items(units):
                 if isinstance(unit, Mapping):
                     yield unit
+        flat_articles = value.get("조문내용")
+        if isinstance(flat_articles, list) and any(
+            isinstance(item, str) for item in flat_articles
+        ):
+            for item in flat_articles:
+                if isinstance(item, str) and item.strip():
+                    yield {"조문내용": item}
         for item in value.values():
             yield from _article_units(item)
     elif isinstance(value, (list, tuple)):
