@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import html
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Mapping, TypeVar
@@ -44,6 +45,7 @@ if TYPE_CHECKING:
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _T = TypeVar("_T")
+_logger = logging.getLogger(__name__)
 
 _VIEW_RESULTS = "results"
 _VIEW_PREVIEW = "preview"
@@ -299,10 +301,12 @@ def _perform_search(st: Any, settings: Settings, parsed: ParsedQuery, refresh: b
     try:
         with st.spinner("공식 자료를 조회하는 중입니다…"):
             response = _run(_search(settings, parsed, refresh))
-    except (ConfigError, OSError):
+    except (ConfigError, OSError) as error:
+        _logger.warning("검색 설정/저장소 오류: %s", type(error).__name__)
         st.error("설정 또는 저장소를 사용할 수 없습니다. 키 파일과 캐시 경로를 확인해 주세요.")
         return
-    except Exception:
+    except Exception as error:
+        _logger.warning("검색 처리 실패: %s", type(error).__name__)
         st.error("검색을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.")
         return
     st.session_state.parsed_query = parsed

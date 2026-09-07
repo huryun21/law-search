@@ -9,6 +9,7 @@ import pytest
 
 import lawsearch.app as app
 
+from lawsearch.config import ConfigError
 from lawsearch.models import (
     DetailResponse,
     ParsedQuery,
@@ -200,6 +201,23 @@ def test_ui_error_never_exposes_exception_text(monkeypatch):
     assert "diagnostic 9382" not in streamlit.errors[0]
     assert "response" not in streamlit.session_state
     assert "parsed_query" not in streamlit.session_state
+
+
+def test_search_failure_logs_exception_type_without_message(monkeypatch, caplog):
+    streamlit = ControllerStub()
+    streamlit.spinner = lambda message: nullcontext()
+
+    async def fail(settings, parsed, refresh):
+        raise ConfigError("API 인증정보가 없습니다. OC=super-secret-value 포함")
+
+    monkeypatch.setattr(app, "_search", fail)
+
+    with caplog.at_level("WARNING"):
+        app._perform_search(streamlit, object(), ParsedQuery("주차장"), refresh=False)
+
+    assert "ConfigError" in caplog.text
+    assert "OC=super-secret-value" not in caplog.text
+    assert "API 인증정보가 없습니다" not in caplog.text
 
 
 def test_open_preview_sets_mode_and_selection():
