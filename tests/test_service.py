@@ -966,3 +966,53 @@ def test_law_search_fetches_additional_pages_until_total_count_is_covered(
     titles = {result.title for result in response.results}
     assert "도시 및 주거환경정비법" in titles
     assert ("laws", "주차 단속") in fake_api.requests
+
+
+def test_priority_keywords_defer_non_matching_candidates_to_pending(
+    service_factory, parsed_plain
+):
+    responses = {
+        ("laws", "주차 단속"): {
+            "LawSearch": {
+                "totalCnt": "2",
+                "law": [
+                    {
+                        "법령ID": "1", "법령일련번호": "1",
+                        "법령명한글": "도시 및 주거환경정비법",
+                        "법령구분명": "법률", "현행연혁코드": "현행",
+                        "공포일자": "20260101", "법령상세링크": "/법령/도시정비법",
+                    },
+                    {
+                        "법령ID": "2", "법령일련번호": "2",
+                        "법령명한글": "관세법",
+                        "법령구분명": "법률", "현행연혁코드": "현행",
+                        "공포일자": "20260101", "법령상세링크": "/법령/관세법",
+                    },
+                ],
+            }
+        },
+    }
+    service, fake_api = service_factory(responses=responses)
+
+    response = run(
+        service.search(parsed_plain, priority_keywords=("도시",))
+    )
+
+    result_titles = {result.title for result in response.results}
+    pending_titles = {result.title for result in response.pending}
+    assert "도시 및 주거환경정비법" in result_titles
+    assert "관세법" not in result_titles
+    assert "관세법" in pending_titles
+    assert [op for op, _ in fake_api.requests].count("detail") == 1
+
+
+def test_empty_priority_keywords_behaves_exactly_like_before(
+    service_factory, parsed_plain
+):
+    service, fake_api = service_factory()
+
+    default_response = run(service.search(parsed_plain))
+    explicit_response = run(service.search(parsed_plain, priority_keywords=()))
+
+    assert default_response.results == explicit_response.results
+    assert default_response.pending == () == explicit_response.pending
