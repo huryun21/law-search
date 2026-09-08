@@ -180,5 +180,19 @@ def _official_url(value: str, source: SourceGroup) -> str:
     return url
 
 
+def extract_total_count(payload: Mapping[str, Any], source: SourceGroup) -> int | None:
+    wrapper_name, _ = _SOURCE_SHAPES[source]
+    wrapper = payload.get(wrapper_name)
+    if not isinstance(wrapper, Mapping):
+        return None
+    raw = wrapper.get("totalCnt", wrapper.get("검색결과개수"))
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
 def _shape_error(source: SourceGroup) -> ResponseShapeError:
     return ResponseShapeError(f"{source.value} 응답 형식을 처리할 수 없습니다.")
