@@ -97,12 +97,14 @@ class FakeApi:
             }
         }
 
-    def _search(self, operation: str, query: str, fixture: str):
+    def _search(self, operation: str, query: str, fixture: str, page: int = 1):
         self.calls.add(operation)
         self.requests.append((operation, query))
         if operation in self.fail or (operation, query) in self.fail:
             raise ApiError(f"{operation} failed safely")
-        configured = self.responses.get((operation, query))
+        configured = self.responses.get((operation, query, page))
+        if configured is None:
+            configured = self.responses.get((operation, query))
         if configured is not None:
             return deepcopy(configured)
         if operation.endswith("_titles"):
@@ -117,11 +119,11 @@ class FakeApi:
 
     async def search_laws(self, query: str, page: int = 1, *, title_only=False):
         operation = "laws_titles" if title_only else "laws"
-        return self._search(operation, query, "law-multiple.json")
+        return self._search(operation, query, "law-multiple.json", page)
 
     async def search_admin_rules(self, query: str, page: int = 1, *, title_only=False):
         operation = "admin_rules_titles" if title_only else "admin_rules"
-        return self._search(operation, query, "admrul.json")
+        return self._search(operation, query, "admrul.json", page)
 
     async def search_ordinances(
         self, query, region, province_only, page=1, *, title_only=False
@@ -130,7 +132,7 @@ class FakeApi:
         if title_only:
             operation += "_titles"
         fixture = "ordin-provincial.json" if province_only else "ordin.json"
-        return self._search(operation, query, fixture)
+        return self._search(operation, query, fixture, page)
 
     async def suggest_terms(self, query: str):
         self.calls.add("terms")
