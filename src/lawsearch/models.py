@@ -96,6 +96,7 @@ class SearchResponse:
     errors: tuple[SourceError, ...]
     source_states: Mapping[str, SourceState]
     source_fetched_at: Mapping[str, datetime]
+    pending: tuple[SearchResult, ...] = ()
 
     def __post_init__(self) -> None:
         unknown_sources = self.source_fetched_at.keys() - self.source_states.keys()

@@ -74,3 +74,23 @@ def test_search_result_defaults_match_context_to_none():
     )
 
     assert result.match_context is None
+
+
+def test_search_response_pending_defaults_to_empty_tuple():
+    response = SearchResponse(
+        results=(), suggestions=(), errors=(), source_states={}, source_fetched_at={}
+    )
+    assert response.pending == ()
+
+
+def test_search_response_accepts_explicit_pending(result_factory):
+    pending_result = result_factory(SourceGroup.LAW, uid="p1", title="대기 법령")
+    response = SearchResponse(
+        results=(),
+        pending=(pending_result,),
+        suggestions=(),
+        errors=(),
+        source_states={},
+        source_fetched_at={},
+    )
+    assert response.pending == (pending_result,)
