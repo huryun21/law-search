@@ -735,6 +735,18 @@ def test_verify_pending_drops_candidates_with_no_exact_context(
     assert confirmed == ()
 
 
+def test_verify_pending_drops_candidates_when_detail_fetch_fails(
+    service_factory, result_factory
+):
+    service, fake_api = service_factory(fail={"detail"})
+    candidate = result_factory(SourceGroup.LAW, uid="p1", title="대기 법령")
+
+    confirmed = run(service.verify_pending((candidate,), "주차 단속"))
+
+    assert confirmed == ()
+    assert [op for op, _ in fake_api.requests].count("detail") == 1
+
+
 def test_token_intersection_runs_only_after_both_variants_are_empty(
     service_factory, parsed_plain, load_fixture
 ):
