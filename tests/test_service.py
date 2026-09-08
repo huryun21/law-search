@@ -713,6 +713,28 @@ def test_load_contexts_limit_is_forwarded(service_factory, result_factory):
     assert len(one.contexts) <= 1
 
 
+def test_verify_pending_keeps_only_exact_matches(service_factory, result_factory):
+    service, fake_api = service_factory()
+    candidate = result_factory(SourceGroup.LAW, uid="p1", title="대기 법령")
+
+    confirmed = run(service.verify_pending((candidate,), "주차 단속"))
+
+    assert len(confirmed) == 1
+    assert confirmed[0].match_context is not None
+    assert [op for op, _ in fake_api.requests].count("detail") == 1
+
+
+def test_verify_pending_drops_candidates_with_no_exact_context(
+    service_factory, result_factory
+):
+    service, fake_api = service_factory()
+    candidate = result_factory(SourceGroup.LAW, uid="p1", title="대기 법령")
+
+    confirmed = run(service.verify_pending((candidate,), "전혀 다른 문구"))
+
+    assert confirmed == ()
+
+
 def test_token_intersection_runs_only_after_both_variants_are_empty(
     service_factory, parsed_plain, load_fixture
 ):

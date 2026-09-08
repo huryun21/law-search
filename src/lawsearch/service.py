@@ -246,6 +246,28 @@ class SearchService:
             pending,
         )
 
+    async def _verify_one(
+        self,
+        result: SearchResult,
+        keyword: str,
+        refresh: bool,
+        semaphore: asyncio.Semaphore,
+    ) -> tuple[SearchResult | None, bool]:
+        if result.scope is SearchScope.TITLE and _title_matches_query(
+            result.title, keyword
+        ):
+            return result, False
+        async with semaphore:
+            detail = await self.load_contexts(result, keyword, refresh)
+        if detail.state is SourceState.ERROR:
+            return None, True
+        if not detail.contexts:
+            return None, False
+        context = detail.contexts[0]
+        if result.scope is SearchScope.TITLE:
+            return replace(result, scope=SearchScope.BODY, match_context=context), False
+        return replace(result, match_context=context), False
+
     async def _verify_body_results(
         self,
         retained: tuple[tuple[SearchResult, SourceState], ...],
@@ -257,29 +279,31 @@ class SearchService:
             item: tuple[SearchResult, SourceState],
         ) -> tuple[tuple[SearchResult, SourceState] | None, bool]:
             result, state = item
-            if result.scope is SearchScope.TITLE and _title_matches_query(
-                result.title, keyword
-            ):
-                return item, False
-            async with semaphore:
-                detail = await self.load_contexts(result, keyword, refresh)
-            if detail.state is SourceState.ERROR:
-                return None, True
-            if not detail.contexts:
-                return None, False
-            context = detail.contexts[0]
-            if result.scope is SearchScope.TITLE:
-                return (
-                    replace(result, scope=SearchScope.BODY, match_context=context),
-                    state,
-                ), False
-            return (replace(result, match_context=context), state), False
+            verified, failed = await self._verify_one(result, keyword, refresh, semaphore)
+            if verified is None:
+                return None, failed
+            return (verified, state), failed
 
         verified = await asyncio.gather(*(verify(item) for item in retained))
         return (
             tuple(item for item, _ in verified if item is not None),
             any(failed for _, failed in verified),
         )
+
+    async def verify_pending(
+        self,
+        pending: tuple[SearchResult, ...],
+        keyword: str,
+        refresh: bool = False,
+    ) -> tuple[SearchResult, ...]:
+        """Verify a batch of previously-deferred candidates. Silently drops
+        any that fail verification or don't have an exact match -- this is
+        best-effort background work, never a source of user-facing errors."""
+        semaphore = asyncio.Semaphore(_DETAIL_VERIFICATION_CONCURRENCY)
+        verified = await asyncio.gather(
+            *(self._verify_one(result, keyword, refresh, semaphore) for result in pending)
+        )
+        return tuple(result for result, _ in verified if result is not None)
 
     async def _fetch_page(
         self,
