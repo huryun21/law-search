@@ -19,7 +19,7 @@ from lawsearch.models import (
     SourceGroup,
     SourceState,
 )
-from lawsearch.normalize import ResponseShapeError, normalize_results
+from lawsearch.normalize import ResponseShapeError, extract_total_count, normalize_results
 from lawsearch.query import build_query_variants
 from lawsearch.ranking import rank_results
 
@@ -259,7 +259,7 @@ class SearchService:
             any(failed for _, failed in verified),
         )
 
-    async def _search_variant(
+    async def _fetch_page(
         self,
         name: str,
         group: SourceGroup,
@@ -269,7 +269,7 @@ class SearchService:
         refresh: bool,
         page: int,
         scope: SearchScope,
-    ) -> SourceOutcome:
+    ) -> tuple[tuple[SearchResult, ...], SourceState, bool, datetime | None, int | None]:
         now = self._clock()
         region_codes = _region_codes(parsed, name)
         cache_source = f"{name}_titles" if scope is SearchScope.TITLE else name
@@ -288,6 +288,7 @@ class SearchService:
                 SourceState.FRESH_CACHE,
                 False,
                 cached.fetched_at,
+                extract_total_count(cached.payload, group),
             )
         try:
             payload = await self._call_source(
@@ -299,7 +300,7 @@ class SearchService:
             )
         except (ApiError, ResponseShapeError):
             if cached is None:
-                return (), SourceState.ERROR, True, None
+                return (), SourceState.ERROR, True, None, None
             normalized = normalize_results(
                 cached.payload,
                 group,
@@ -312,6 +313,7 @@ class SearchService:
                 SourceState.STALE_FALLBACK,
                 True,
                 cached.fetched_at,
+                extract_total_count(cached.payload, group),
             )
         self._cache.put(key, payload, fetched_at)
         normalized = _filter_provincial_results(name, parsed, normalized)
@@ -320,7 +322,43 @@ class SearchService:
             SourceState.LIVE if normalized else SourceState.EMPTY,
             False,
             fetched_at,
+            extract_total_count(payload, group),
         )
+
+    async def _search_variant(
+        self,
+        name: str,
+        group: SourceGroup,
+        query: str,
+        quality: MatchQuality,
+        parsed: ParsedQuery,
+        refresh: bool,
+        page: int,
+        scope: SearchScope,
+    ) -> SourceOutcome:
+        results, state, error, fetched_at, total = await self._fetch_page(
+            name, group, query, quality, parsed, refresh, page, scope
+        )
+        if error:
+            return results, state, error, fetched_at
+        accumulated = list(results)
+        current_page = page
+        while total is not None and len(accumulated) < total and results:
+            current_page += 1
+            results, page_state, page_error, page_fetched_at, total = await self._fetch_page(
+                name, group, query, quality, parsed, refresh, current_page, scope
+            )
+            if page_error or not results:
+                break
+            accumulated.extend(results)
+            state = _result_state([state, page_state])
+            if page_fetched_at is not None:
+                fetched_at = (
+                    page_fetched_at
+                    if fetched_at is None
+                    else min(fetched_at, page_fetched_at)
+                )
+        return tuple(accumulated), state, error, fetched_at
 
     async def _call_source(
         self,

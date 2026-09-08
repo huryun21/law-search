@@ -129,7 +129,17 @@ def test_provincial_filter_applies_to_fresh_cached_payload(
         if item.source is SourceGroup.PROVINCIAL
     }
     assert authorities == {"경기도"}
-    assert response.source_states["provincial"] is SourceState.FRESH_CACHE
+    # totalCnt=3 on the cached page 1 payload, but the province-name filter
+    # only keeps 1 of those 3 raw records. Task 4's full-page-fetch loop
+    # (by design, applied uniformly across laws/admin_rules/municipal/
+    # provincial per docs/superpowers/specs/2026-09-08-progressive-body-
+    # verification-design.md section 5.1) correctly treats totalCnt=3 as
+    # "there may be more provincial-authority matches on later pages" and
+    # fetches page 2 live, so the combined state is LIVE rather than
+    # FRESH_CACHE. This mirrors the exact recall problem this task fixes:
+    # a province-level match sorted past page 1 by unrelated
+    # municipality-level noise would otherwise be silently missed.
+    assert response.source_states["provincial"] is SourceState.LIVE
 
 
 def test_provincial_filter_applies_to_stale_fallback_payload(
@@ -847,3 +857,52 @@ def test_fresh_detail_bypasses_failure_but_refresh_falls_back_safely(
     assert refreshed.state is SourceState.STALE_FALLBACK
     assert refreshed.fetched_at == now
     assert broken.detail_attempts == 1
+
+
+def test_law_search_fetches_additional_pages_until_total_count_is_covered(
+    service_factory, parsed_plain
+):
+    page_one = {
+        "LawSearch": {
+            "totalCnt": "4",
+            "law": [
+                {
+                    "법령ID": f"100{i}",
+                    "법령일련번호": f"100{i}",
+                    "법령명한글": f"앞자리법{i}",
+                    "법령구분명": "법률",
+                    "현행연혁코드": "현행",
+                    "공포일자": "20260101",
+                    "법령상세링크": f"/법령/앞자리법{i}",
+                }
+                for i in range(3)
+            ],
+        }
+    }
+    page_two = {
+        "LawSearch": {
+            "totalCnt": "4",
+            "law": [
+                {
+                    "법령ID": "2000",
+                    "법령일련번호": "2000",
+                    "법령명한글": "도시 및 주거환경정비법",
+                    "법령구분명": "법률",
+                    "현행연혁코드": "현행",
+                    "공포일자": "20260101",
+                    "법령상세링크": "/법령/도시정비법",
+                }
+            ],
+        }
+    }
+    responses = {
+        ("laws", "주차 단속"): page_one,
+        ("laws", "주차 단속", 2): page_two,
+    }
+    service, fake_api = service_factory(responses=responses)
+
+    response = run(service.search(parsed_plain))
+
+    titles = {result.title for result in response.results}
+    assert "도시 및 주거환경정비법" in titles
+    assert ("laws", "주차 단속") in fake_api.requests
