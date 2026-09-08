@@ -1009,7 +1009,36 @@ def test_priority_keywords_defer_non_matching_candidates_to_pending(
 def test_empty_priority_keywords_behaves_exactly_like_before(
     service_factory, parsed_plain
 ):
-    service, fake_api = service_factory()
+    # Title deliberately contains none of PRIORITY_KEYWORDS's ~41 entries (same
+    # "관세법" choice as test_priority_keywords_defer_non_matching_candidates_to_pending
+    # above, verified there to not match any keyword). This matters because if
+    # _search_source ever forgot to thread the caller's priority_keywords through
+    # to classify_candidates(retained, priority_keywords) -- e.g. accidentally
+    # calling classify_candidates(retained) -- classify_candidates would silently
+    # fall back to its own default parameter (the full PRIORITY_KEYWORDS list)
+    # instead of the caller's actual `()`. A title containing a real keyword
+    # (e.g. the default fixtures' "주차장법"/"주차장 설치 및 관리지침", both
+    # matching "주차장") would then coincidentally still classify as priority,
+    # keeping pending empty and hiding the bug. "관세법" cannot do that, so if the
+    # wiring bug were ever introduced, classify_candidates would fall back to
+    # PRIORITY_KEYWORDS, "관세법" would land in "rest", and response.pending would
+    # become non-empty -- correctly failing this test's `== ()` assertion below.
+    responses = {
+        ("laws", "주차 단속"): {
+            "LawSearch": {
+                "totalCnt": "1",
+                "law": [
+                    {
+                        "법령ID": "2", "법령일련번호": "2",
+                        "법령명한글": "관세법",
+                        "법령구분명": "법률", "현행연혁코드": "현행",
+                        "공포일자": "20260101", "법령상세링크": "/법령/관세법",
+                    },
+                ],
+            }
+        },
+    }
+    service, fake_api = service_factory(responses=responses)
 
     default_response = run(service.search(parsed_plain))
     explicit_response = run(service.search(parsed_plain, priority_keywords=()))
