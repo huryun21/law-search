@@ -178,15 +178,30 @@ def test_provincial_filter_applies_to_stale_fallback_payload(
 def test_provincial_pagination_recovers_match_after_page_one_filters_to_empty(
     service_factory, parsed_pyeongtaek
 ):
+    # Single-token keyword (no space) is essential here: build_query_variants
+    # dedupes "대수"'s exact/compact candidates down to exactly ONE variant
+    # (only one query string to stub), and it makes `tokens = keyword.split()`
+    # length 1, so `_search_source`'s `len(tokens) >= 2` multi-token fallback
+    # can NEVER trigger for this keyword -- eliminating that confound
+    # entirely rather than merely avoiding it by not stubbing it. "대수" is
+    # also chosen because it appears in FakeApi's fixed fetch_detail payload
+    # ("시설별 주차 대수 기준을 정한다."), so body-verification does not
+    # strip out the results we're trying to observe.
+    #
     # Page 1's RAW payload contains only a subordinate-municipality record,
     # which _filter_provincial_results drops entirely -- but totalCnt (raw)
     # says there are 2 records in total, so a real page 2 remains to fetch.
-    # Page 2's RAW payload contains the actual province-level match. This
-    # reproduces the exact bug: if pagination's continuation decision were
-    # based on the FILTERED (post-province-filter) results instead of the
-    # RAW ones, page 1 filtering down to empty would stop the loop before
-    # page 2 -- and this earlier confirmed real match would be silently
-    # missed.
+    # Page 2's RAW payload contains the actual province-level match, given a
+    # distinctive title found nowhere else (not in this file's other
+    # payloads, not in tests/fixtures/ordin-provincial.json's default
+    # "경기도 주차장 설치 지원 조례" record). This reproduces the exact bug:
+    # if pagination's continuation decision were based on the FILTERED
+    # (post-province-filter) results instead of the RAW ones, page 1
+    # filtering down to empty would stop the loop before page 2 -- and this
+    # earlier confirmed real match would be silently missed. Asserting on the
+    # specific title (not just "some 경기도-authority record exists") also
+    # guards against a coincidental match from an unrelated default fixture
+    # record satisfying a looser assertion via some other code path.
     page_one = ordinance_payload("경기도 광명시")
     page_one["OrdinSearch"]["totalCnt"] = "2"
     page_two = ordinance_payload("경기도")
@@ -194,6 +209,7 @@ def test_provincial_pagination_recovers_match_after_page_one_filters_to_empty(
     page_two["OrdinSearch"]["law"][0].update(
         {
             "자치법규일련번호": "1900100",
+            "자치법규명": "경기도 대수 기준 조례",
             "자치법규ID": "2040100",
             "자치법규상세링크": "/자치법규/2040100",
         }
@@ -201,15 +217,13 @@ def test_provincial_pagination_recovers_match_after_page_one_filters_to_empty(
 
     service, _ = service_factory(
         responses={
-            ("provincial", "주차 대수", 1): page_one,
-            ("provincial", "주차대수", 1): page_one,
-            ("provincial", "주차 대수", 2): page_two,
-            ("provincial", "주차대수", 2): page_two,
+            ("provincial", "대수", 1): page_one,
+            ("provincial", "대수", 2): page_two,
         }
     )
 
     response = run(
-        service.search(ParsedQuery("주차 대수", parsed_pyeongtaek.region))
+        service.search(ParsedQuery("대수", parsed_pyeongtaek.region))
     )
 
     provincial_results = [
@@ -219,6 +233,7 @@ def test_provincial_pagination_recovers_match_after_page_one_filters_to_empty(
         "page 2's province-level match should survive pagination even though "
         "page 1 filtered to empty"
     )
+    assert "경기도 대수 기준 조례" in {item.title for item in provincial_results}
     assert {item.authority for item in provincial_results} == {"경기도"}
 
 
