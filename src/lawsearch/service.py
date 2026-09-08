@@ -20,6 +20,7 @@ from lawsearch.models import (
     SourceState,
 )
 from lawsearch.normalize import ResponseShapeError, extract_total_count, normalize_results
+from lawsearch.prioritization import classify_candidates
 from lawsearch.query import build_query_variants
 from lawsearch.ranking import rank_results
 
@@ -46,7 +47,11 @@ class SearchService:
         self._clock = clock
 
     async def search(
-        self, parsed: ParsedQuery, refresh: bool = False, page: int = 1
+        self,
+        parsed: ParsedQuery,
+        refresh: bool = False,
+        page: int = 1,
+        priority_keywords: tuple[str, ...] = (),
     ) -> SearchResponse:
         if parsed.candidates:
             raise SearchValidationError("지역 후보를 하나로 확정해야 검색할 수 있습니다.")
@@ -63,7 +68,7 @@ class SearchService:
         detail_semaphore = asyncio.Semaphore(_DETAIL_VERIFICATION_CONCURRENCY)
         source_tasks = [
             self._search_source(
-                name, group, parsed, refresh, page, detail_semaphore
+                name, group, parsed, refresh, page, detail_semaphore, priority_keywords
             )
             for name, group in sources
         ]
@@ -74,6 +79,7 @@ class SearchService:
         )
 
         results: list[SearchResult] = []
+        pending: list[SearchResult] = []
         errors: list[SourceError] = []
         states: dict[str, SourceState] = {}
         fetched_at: dict[str, datetime] = {}
@@ -82,8 +88,9 @@ class SearchService:
                 states[name] = SourceState.ERROR
                 errors.append(SourceError(name, f"{name} search failed"))
                 continue
-            source_results, state, source_error, source_fetched_at = outcome
+            source_results, state, source_error, source_fetched_at, source_pending = outcome
             results.extend(source_results)
+            pending.extend(source_pending)
             states[name] = state
             if source_fetched_at is not None:
                 fetched_at[name] = source_fetched_at
@@ -99,6 +106,7 @@ class SearchService:
 
         return SearchResponse(
             results=rank_results(_deduplicate(results), parsed.region, parsed.keyword),
+            pending=tuple(pending),
             suggestions=suggestions,
             errors=tuple(errors),
             source_states=states,
@@ -150,8 +158,13 @@ class SearchService:
         refresh: bool,
         page: int,
         detail_semaphore: asyncio.Semaphore,
+        priority_keywords: tuple[str, ...] = (),
     ) -> tuple[
-        tuple[SearchResult, ...], SourceState, SourceError | None, datetime | None
+        tuple[SearchResult, ...],
+        SourceState,
+        SourceError | None,
+        datetime | None,
+        tuple[SearchResult, ...],
     ]:
         variants = build_query_variants(parsed.keyword)
         outcomes = [
@@ -201,8 +214,10 @@ class SearchService:
                     outcomes.append(outcome)
                 retained = _intersect_token_outcomes(token_outcomes)
 
+        priority, rest = classify_candidates(retained, priority_keywords)
+
         retained, validation_failed = await self._verify_body_results(
-            retained,
+            priority,
             parsed.keyword,
             refresh,
             detail_semaphore,
@@ -222,7 +237,14 @@ class SearchService:
             if retained
             else _outcome_fetched_at(outcomes, state)
         )
-        return tuple(item[0] for item in retained), state, error, source_fetched_at
+        pending = tuple(result for result, _ in rest)
+        return (
+            tuple(item[0] for item in retained),
+            state,
+            error,
+            source_fetched_at,
+            pending,
+        )
 
     async def _verify_body_results(
         self,
