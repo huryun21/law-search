@@ -284,7 +284,7 @@ class SearchService:
                 scope=scope,
             )
             return (
-                _filter_provincial_results(name, parsed, normalized),
+                normalized,
                 SourceState.FRESH_CACHE,
                 False,
                 cached.fetched_at,
@@ -309,14 +309,13 @@ class SearchService:
                 scope=scope,
             )
             return (
-                _filter_provincial_results(name, parsed, normalized),
+                normalized,
                 SourceState.STALE_FALLBACK,
                 True,
                 cached.fetched_at,
                 extract_total_count(cached.payload, group),
             )
         self._cache.put(key, payload, fetched_at)
-        normalized = _filter_provincial_results(name, parsed, normalized)
         return (
             normalized,
             SourceState.LIVE if normalized else SourceState.EMPTY,
@@ -339,26 +338,30 @@ class SearchService:
         results, state, error, fetched_at, total = await self._fetch_page(
             name, group, query, quality, parsed, refresh, page, scope
         )
-        if error:
-            return results, state, error, fetched_at
         accumulated = list(results)
-        current_page = page
-        while total is not None and len(accumulated) < total and results:
-            current_page += 1
-            results, page_state, page_error, page_fetched_at, total = await self._fetch_page(
-                name, group, query, quality, parsed, refresh, current_page, scope
-            )
-            if page_error or not results:
-                break
-            accumulated.extend(results)
-            state = _result_state([state, page_state])
-            if page_fetched_at is not None:
-                fetched_at = (
-                    page_fetched_at
-                    if fetched_at is None
-                    else min(fetched_at, page_fetched_at)
+        if not error:
+            current_page = page
+            while total is not None and len(accumulated) < total and results:
+                current_page += 1
+                results, page_state, page_error, page_fetched_at, total = await self._fetch_page(
+                    name, group, query, quality, parsed, refresh, current_page, scope
                 )
-        return tuple(accumulated), state, error, fetched_at
+                if page_error or not results:
+                    break
+                accumulated.extend(results)
+                state = _result_state([state, page_state])
+                if page_fetched_at is not None:
+                    fetched_at = (
+                        page_fetched_at
+                        if fetched_at is None
+                        else min(fetched_at, page_fetched_at)
+                    )
+        return (
+            _filter_provincial_results(name, parsed, tuple(accumulated)),
+            state,
+            error,
+            fetched_at,
+        )
 
     async def _call_source(
         self,

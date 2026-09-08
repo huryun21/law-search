@@ -129,17 +129,15 @@ def test_provincial_filter_applies_to_fresh_cached_payload(
         if item.source is SourceGroup.PROVINCIAL
     }
     assert authorities == {"경기도"}
-    # totalCnt=3 on the cached page 1 payload, but the province-name filter
-    # only keeps 1 of those 3 raw records. Task 4's full-page-fetch loop
-    # (by design, applied uniformly across laws/admin_rules/municipal/
-    # provincial per docs/superpowers/specs/2026-09-08-progressive-body-
-    # verification-design.md section 5.1) correctly treats totalCnt=3 as
-    # "there may be more provincial-authority matches on later pages" and
-    # fetches page 2 live, so the combined state is LIVE rather than
-    # FRESH_CACHE. This mirrors the exact recall problem this task fixes:
-    # a province-level match sorted past page 1 by unrelated
-    # municipality-level noise would otherwise be silently missed.
-    assert response.source_states["provincial"] is SourceState.LIVE
+    # totalCnt=3 on the cached page 1 payload, and the raw (unfiltered) page 1
+    # payload already contains all 3 records that totalCnt promises. The
+    # province-name filter is applied once, after pagination, purely to
+    # decide which of the accumulated raw candidates survive into the final
+    # result -- it must not influence whether pagination continues. Since
+    # raw record count == total here, there is nothing left to fetch on page
+    # 2 regardless of how many records the filter keeps, so the state stays
+    # FRESH_CACHE.
+    assert response.source_states["provincial"] is SourceState.FRESH_CACHE
 
 
 def test_provincial_filter_applies_to_stale_fallback_payload(
@@ -175,6 +173,53 @@ def test_provincial_filter_applies_to_stale_fallback_payload(
     }
     assert authorities == {"경기도"}
     assert response.source_states["provincial"] is SourceState.STALE_FALLBACK
+
+
+def test_provincial_pagination_recovers_match_after_page_one_filters_to_empty(
+    service_factory, parsed_pyeongtaek
+):
+    # Page 1's RAW payload contains only a subordinate-municipality record,
+    # which _filter_provincial_results drops entirely -- but totalCnt (raw)
+    # says there are 2 records in total, so a real page 2 remains to fetch.
+    # Page 2's RAW payload contains the actual province-level match. This
+    # reproduces the exact bug: if pagination's continuation decision were
+    # based on the FILTERED (post-province-filter) results instead of the
+    # RAW ones, page 1 filtering down to empty would stop the loop before
+    # page 2 -- and this earlier confirmed real match would be silently
+    # missed.
+    page_one = ordinance_payload("경기도 광명시")
+    page_one["OrdinSearch"]["totalCnt"] = "2"
+    page_two = ordinance_payload("경기도")
+    page_two["OrdinSearch"]["totalCnt"] = "2"
+    page_two["OrdinSearch"]["law"][0].update(
+        {
+            "자치법규일련번호": "1900100",
+            "자치법규ID": "2040100",
+            "자치법규상세링크": "/자치법규/2040100",
+        }
+    )
+
+    service, _ = service_factory(
+        responses={
+            ("provincial", "주차 대수", 1): page_one,
+            ("provincial", "주차대수", 1): page_one,
+            ("provincial", "주차 대수", 2): page_two,
+            ("provincial", "주차대수", 2): page_two,
+        }
+    )
+
+    response = run(
+        service.search(ParsedQuery("주차 대수", parsed_pyeongtaek.region))
+    )
+
+    provincial_results = [
+        item for item in response.results if item.source is SourceGroup.PROVINCIAL
+    ]
+    assert provincial_results, (
+        "page 2's province-level match should survive pagination even though "
+        "page 1 filtered to empty"
+    )
+    assert {item.authority for item in provincial_results} == {"경기도"}
 
 
 def test_province_only_region_calls_no_municipal_source(service_factory):
