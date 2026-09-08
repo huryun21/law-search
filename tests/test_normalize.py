@@ -130,3 +130,18 @@ def test_unrecognized_or_unsafe_response_raises_source_only_error(payload):
         normalize_results(payload, SourceGroup.LAW, MatchQuality.EXACT, FETCHED_AT)
 
     assert str(caught.value) == "law 응답 형식을 처리할 수 없습니다."
+
+
+def test_extract_total_count_reads_wrapper_field():
+    from lawsearch.normalize import extract_total_count
+
+    payload = {"LawSearch": {"totalCnt": "806", "law": []}}
+    assert extract_total_count(payload, SourceGroup.LAW) == 806
+
+
+def test_extract_total_count_returns_none_when_missing_or_invalid():
+    from lawsearch.normalize import extract_total_count
+
+    assert extract_total_count({"LawSearch": {}}, SourceGroup.LAW) is None
+    assert extract_total_count({}, SourceGroup.LAW) is None
+    assert extract_total_count({"LawSearch": {"totalCnt": "abc"}}, SourceGroup.LAW) is None
