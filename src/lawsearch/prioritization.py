@@ -20,6 +20,10 @@ PRIORITY_KEYWORDS: tuple[str, ...] = (
 )
 
 
+def _title_matches(title: str, keywords: tuple[str, ...]) -> bool:
+    return any(keyword in title for keyword in keywords)
+
+
 def classify_candidates(
     candidates: tuple[tuple[SearchResult, SourceState], ...],
     keywords: tuple[str, ...] = PRIORITY_KEYWORDS,
@@ -36,8 +40,29 @@ def classify_candidates(
     rest = []
     for item in candidates:
         result, _ = item
-        if any(keyword in result.title for keyword in keywords):
+        if _title_matches(result.title, keywords):
             priority.append(item)
         else:
             rest.append(item)
     return tuple(priority), tuple(rest)
+
+
+def split_by_relevance(
+    results: tuple[SearchResult, ...],
+    keywords: tuple[str, ...] = PRIORITY_KEYWORDS,
+) -> tuple[tuple[SearchResult, ...], tuple[SearchResult, ...]]:
+    """Split already-verified body-match results into (relevant, less_relevant)
+    by whether their title contains any of ``keywords``. This is a display
+    grouping only — it never decides whether a result is an exact match, and
+    it must never be applied to title-scope results (the user asked for that
+    law by name, so it is always relevant regardless of domain keywords)."""
+    if not keywords:
+        return tuple(results), ()
+    relevant = []
+    less_relevant = []
+    for result in results:
+        if _title_matches(result.title, keywords):
+            relevant.append(result)
+        else:
+            less_relevant.append(result)
+    return tuple(relevant), tuple(less_relevant)

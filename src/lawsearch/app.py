@@ -346,7 +346,8 @@ def _render_results(
     for message in build_error_messages(response):
         st.error(message)
     for group in build_grouped_view(response, parsed.region):
-        st.subheader(f"{group.label} ({len(group.results)})")
+        total = len(group.results) + len(group.less_relevant_results)
+        st.subheader(f"{group.label} ({total})")
         if group.state is SourceState.STALE_FALLBACK:
             st.warning(group.status_message)
         elif group.state is SourceState.ERROR:
@@ -354,11 +355,20 @@ def _render_results(
             st.caption("위의 새로고침 버튼으로 이 출처를 다시 조회할 수 있습니다.")
         else:
             st.caption(group.status_message)
-        for row in card_rows(group.results, columns=2):
-            columns = st.columns(2)
-            for column, card in zip(columns, row):
-                with column:
-                    _render_card(st, card, parsed.keyword)
+        _render_card_rows(st, group.results, parsed.keyword)
+        if group.less_relevant_results:
+            with st.expander(
+                f"관련성 낮은 결과 {len(group.less_relevant_results)}건 더보기"
+            ):
+                _render_card_rows(st, group.less_relevant_results, parsed.keyword)
+
+
+def _render_card_rows(st: Any, results: tuple[SearchResult, ...], keyword: str) -> None:
+    for row in card_rows(results, columns=2):
+        columns = st.columns(2)
+        for column, card in zip(columns, row):
+            with column:
+                _render_card(st, card, keyword)
 
 
 _PENDING_CHUNK_SIZE = 20
