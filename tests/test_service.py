@@ -1042,6 +1042,81 @@ def test_law_search_fetches_additional_pages_until_total_count_is_covered(
     assert ("laws", "주차 단속") in fake_api.requests
 
 
+def _law_page(total, *titles):
+    return {
+        "LawSearch": {
+            "totalCnt": str(total),
+            "law": [
+                {
+                    "법령ID": str(4000 + index),
+                    "법령일련번호": str(4000 + index),
+                    "법령명한글": title,
+                    "법령구분명": "법률",
+                    "현행연혁코드": "현행",
+                    "공포일자": "20260101",
+                    "법령상세링크": f"/법령/{4000 + index}",
+                }
+                for index, title in enumerate(titles, 1)
+            ],
+        }
+    }
+
+
+def test_page_one_result_survives_a_failure_on_a_later_page(
+    service_factory, parsed_plain
+):
+    # Page 1 reports totalCnt=3 but returns a single record, so pagination must
+    # continue -- and page 2 fails. The already-fetched page-1 candidate is
+    # genuinely useful, so it must still be returned rather than discarded.
+    service, _ = service_factory(
+        responses={("laws", "주차 단속", 1): _law_page(3, "주차 단속 근거법")},
+        fail={("laws", "주차 단속", 2)},
+    )
+
+    response = run(service.search(parsed_plain))
+
+    assert "주차 단속 근거법" in {item.title for item in response.results}
+
+
+def test_mid_pagination_failure_flags_the_source_instead_of_passing_silently(
+    service_factory, parsed_plain
+):
+    # `if page_error or not results: break` used to discard page_error entirely,
+    # so the outcome kept page 1's error=False. A source whose page 2 of 3
+    # failed therefore reported as a complete, healthy LIVE result over a
+    # truncated candidate set -- every real match on the unread pages silently
+    # dropped with no user-visible signal at all. The flag must ride the same
+    # SourceError path a page-1 failure already uses.
+    service, _ = service_factory(
+        responses={("laws", "주차 단속", 1): _law_page(3, "주차 단속 근거법")},
+        fail={("laws", "주차 단속", 2)},
+    )
+
+    outcome = run(
+        service._search_variant(
+            "laws",
+            SourceGroup.LAW,
+            "주차 단속",
+            MatchQuality.EXACT,
+            parsed_plain,
+            False,
+            1,
+            SearchScope.BODY,
+        )
+    )
+    results, _, error, _ = outcome
+
+    assert error is True, "a failed later page must set the outcome's error flag"
+    assert "주차 단속 근거법" in {item.title for item in results}
+
+    response = run(service.search(parsed_plain, refresh=True))
+
+    assert any(item.source == "laws" for item in response.errors), (
+        "the partial failure must surface through the source's existing "
+        "SourceError plumbing"
+    )
+
+
 def test_priority_keywords_defer_non_matching_candidates_to_pending(
     service_factory, parsed_plain
 ):

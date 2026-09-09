@@ -392,7 +392,17 @@ class SearchService:
                 results, page_state, page_error, page_fetched_at, total = await self._fetch_page(
                     name, group, query, quality, parsed, refresh, current_page, scope
                 )
-                if page_error or not results:
+                if page_error:
+                    # A later page failed. Keep the pages already accumulated --
+                    # partial candidates are still useful -- but report the
+                    # failure through this source's existing error flag, the same
+                    # path a page-1 failure uses. Without this the source would
+                    # present a truncated candidate set as a complete, healthy
+                    # LIVE result and silently drop every real match that lived
+                    # on the pages after the one that failed.
+                    error = True
+                    break
+                if not results:
                     break
                 accumulated.extend(results)
                 state = _result_state([state, page_state])
