@@ -402,8 +402,18 @@ class SearchService:
                         if fetched_at is None
                         else min(fetched_at, page_fetched_at)
                     )
+        filtered = _filter_provincial_results(name, parsed, tuple(accumulated))
+        if not filtered and state is SourceState.LIVE:
+            # The raw payload had records, so _fetch_page reported LIVE, but the
+            # province-name filter stripped every one of them. Only LIVE is
+            # downgraded: STALE_FALLBACK/ERROR/FRESH_CACHE/EMPTY each carry
+            # information this outcome must keep reporting. Leaving LIVE here
+            # would make _combine_state resolve to EMPTY for a source whose
+            # outcomes hold no EMPTY state, so _outcome_fetched_at would find no
+            # timestamp and SearchResponse would reject the whole response.
+            state = SourceState.EMPTY
         return (
-            _filter_provincial_results(name, parsed, tuple(accumulated)),
+            filtered,
             state,
             error,
             fetched_at,
