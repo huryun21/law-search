@@ -100,7 +100,11 @@ class FakeApi:
     def _search(self, operation: str, query: str, fixture: str, page: int = 1):
         self.calls.add(operation)
         self.requests.append((operation, query))
-        if operation in self.fail or (operation, query) in self.fail:
+        if (
+            operation in self.fail
+            or (operation, query) in self.fail
+            or (operation, query, page) in self.fail
+        ):
             raise ApiError(f"{operation} failed safely")
         configured = self.responses.get((operation, query, page))
         if configured is None:
