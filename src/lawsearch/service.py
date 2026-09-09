@@ -609,12 +609,27 @@ def _combine_state(
 def _outcome_fetched_at(
     outcomes: list[SourceOutcome], state: SourceState
 ) -> datetime | None:
-    timestamps = [
+    matching = [
         fetched_at
         for _, outcome_state, _, fetched_at in outcomes
         if outcome_state is state and fetched_at is not None
     ]
-    return min(timestamps) if timestamps else None
+    if matching:
+        return min(matching)
+    if state is SourceState.ERROR:
+        return None
+    # No outcome's own state matches the resolved state -- this happens
+    # whenever something downstream of the raw fetch (the exact-match body
+    # verification, a post-fetch content filter, ...) discards every
+    # candidate an outcome reported as LIVE, so _combine_state falls back to
+    # EMPTY without any outcome literally carrying EMPTY. The fetch still
+    # happened and produced a real timestamp, so a resolved non-error state
+    # must not be reported without one -- fall back to any outcome's
+    # timestamp instead of leaving it unresolved.
+    any_timestamps = [
+        fetched_at for _, _, _, fetched_at in outcomes if fetched_at is not None
+    ]
+    return min(any_timestamps) if any_timestamps else None
 
 
 def _result_state(states: list[SourceState]) -> SourceState:
