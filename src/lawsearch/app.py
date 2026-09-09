@@ -398,7 +398,7 @@ def _render_pending_status(st: Any, settings: Settings, parsed: ParsedQuery) -> 
         return
     if st.session_state.get("pending_total", 0):
         found = st.session_state.get("pending_found", 0)
-        st.caption(
+        st.success(
             f"전체 확인 완료 (추가로 {found}건 발견)" if found else "전체 확인 완료"
         )
         _render_pending_failures(st)
@@ -456,7 +456,8 @@ def _render_pending_progress(st: Any, settings: Settings, parsed: ParsedQuery) -
     if remaining:
         total = st.session_state.get("pending_total", 0)
         checked = st.session_state.get("pending_checked", 0)
-        st.caption(f"나머지 확인 중… ({checked} / {total})")
+        fraction = (checked / total) if total else 0.0
+        st.progress(fraction, f"나머지 확인 중… ({checked} / {total})")
         _render_pending_failures(st)
 
 

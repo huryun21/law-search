@@ -73,6 +73,12 @@ class FakeStreamlit:
     def info(self, *a, **k):
         self._record("info", *a, **k)
 
+    def success(self, *a, **k):
+        self._record("success", *a, **k)
+
+    def progress(self, *a, **k):
+        self._record("progress", *a, **k)
+
     def warning(self, *a, **k):
         self._record("warning", *a, **k)
 
@@ -149,6 +155,10 @@ class FakeStreamlit:
     def container(self, *a, **k):
         self._record("container", *a, **k)
         yield self
+
+    def empty(self, *a, **k):
+        self._record("empty", *a, **k)
+        return _Child(self)
 
     @contextmanager
     def expander(self, label, *a, **k):
