@@ -83,6 +83,18 @@
 
 회귀 근거: tests/test_normalize.py의 test_authenticated_drf_detail_links_become_public_reader_links와 tests/test_api_response_security.py.
 
+### 본문 검색 후보가 많을 때 1페이지 뒤의 진짜 일치 문서가 조용히 빠지던 문제
+
+원인: 법제처 lawSearch.do API는 본문 검색 결과를 관련도순이 아니라 법령명 가나다순으로 반환하며, 이 앱은 1페이지(100건)만 받아왔다. "통합심의" 검색에서 전체 806건 중 "도시 및 주거환경정비법"(도시정비법 제50조의2에 "통합심의"가 정확히 있음)은 이름이 뒤쪽 순번이라 3페이지에 있었고, 후보로 조차 오르지 못해 조용히 빠졌다.
+
+수정: `SearchService._search_variant()`가 각 자료원의 `totalCnt`를 확인해 모든 페이지를 받아올 때까지 반복 조회한다(`_fetch_page()`가 페이지 하나, `_search_variant()`가 순회 담당). 페이지 상한은 두지 않는다 — 대신 후보를 우선순위/나머지로 나눠 우선순위만 즉시 검증하고, 나머지는 검색 화면 안에서 `st.fragment(run_every="2s")`로 몇 초 간격으로 점진적으로 검증해 자동으로 결과에 추가한다(`classify_candidates()`, `SearchService.verify_pending()`, `app._render_pending_progress()`). 확정된 결과가 새로 나오면 그때만 `st.rerun()`으로 화면 전체를 갱신하고(빈 틱마다 갱신하지 않음), 정확 일치 판정 로직(`detail.py`)은 전혀 바꾸지 않았다 — 검증 대상에 오르는 후보의 범위와 순서만 바뀐다.
+
+알려진 동작(버그 아님): 브라우저가 이 탭을 백그라운드로 두면(다른 탭을 보고 있으면) 타이머 기반 자동 새로고침을 브라우저가 스스로 느리게 만들어서, "나머지 확인 중…" 진행이 잠깐 멈춘 것처럼 보일 수 있다. 탭을 다시 활성화하면 이어서 진행된다.
+
+회귀 근거: tests/test_service.py의 test_law_search_fetches_additional_pages_until_total_count_is_covered, test_priority_keywords_defer_non_matching_candidates_to_pending, test_verify_pending_keeps_only_exact_matches 등. 실제 실행 중인 앱으로 "통합심의" 재검색해 "도시 및 주거환경정비법"이 우선순위 결과에 바로 뜨는 것, 나머지 1802건이 점진적으로 검증되며 사이드바 건수가 클릭 없이 자동으로 늘어나는 것, "방화구획" 재검색으로 기존 핵심 회귀(자연공원법 등 무관 결과 미노출)가 여전히 지켜지는 것을 수동 확인함(2026-09-09).
+
+설계 문서: docs/superpowers/specs/2026-09-08-progressive-body-verification-design.md, 구현 계획: docs/superpowers/plans/2026-09-08-progressive-body-verification.md.
+
 ## 5. 현재 실행·서버·데이터 흐름
 
 ~~~
@@ -114,6 +126,8 @@ run.bat
 
 현재 검색은 자료원별 검색 자체는 병렬로 시작하지만, 각 자료원에서는 제목 검색·본문 변형 검색과 본문 상세 검증이 추가로 일어난다. 정확도 회귀를 막기 위해 필요한 과정이지만, 결과가 많은 검색어는 느려질 수 있다.
 
+**2026-09-09 갱신**: 위 4번 항목(결과 렌더링과 본문 미리보기 분리)은 구현 완료됐다 — 후보를 우선순위 키워드(§4의 "본문 검색 후보가 많을 때..." 참고, `src/lawsearch/prioritization.py`) 기준으로 나눠 우선순위만 즉시 검증해 먼저 보여주고, 나머지는 화면 안에서 몇 초 간격으로 점진적으로 검증해 자동으로 추가한다. 1, 2번(자료원별 진행 상태 표시, 검증 시간 측정·로깅)은 여전히 남아 있다.
+
 성능을 손댈 때 절대 하지 말 것:
 
 - 상세 본문 검증을 단순히 삭제해 오탐을 다시 노출하는 것
@@ -125,7 +139,7 @@ run.bat
 1. 검색 화면에 자료원별 진행 상태와 캐시 적중 여부를 표시한다.
 2. 정확도 검증 대상 수와 상세 요청 시간을 측정하되, 키·전체 요청 URL·본문 전체를 로그로 남기지 않는다.
 3. 제목 정확 일치 결과는 현재처럼 상세 조회를 미루고, 사용자가 열 때만 조회한다.
-4. 결과 렌더링과 본문 미리보기를 분리해 검색 결과가 먼저 보이게 한다.
+4. ~~결과 렌더링과 본문 미리보기를 분리해 검색 결과가 먼저 보이게 한다.~~ (완료, 위 참고)
 
 ## 7. UI 구현 상태
 
