@@ -774,6 +774,97 @@ def test_pending_progress_does_nothing_when_no_pending_work():
     assert streamlit.calls == []
 
 
+def test_pending_status_stops_scheduling_the_fragment_once_the_queue_is_empty(
+    monkeypatch,
+):
+    # pending_total is set once per search and never cleared as verification
+    # proceeds, so gating the fragment on it kept the 2-second timer firing for
+    # the rest of the session after the queue had drained. The gate must read
+    # the queue.
+    streamlit = FakeStreamlit(
+        session_state={
+            "pending_queue": [],
+            "pending_total": 25,
+            "pending_checked": 25,
+            "pending_found": 0,
+        }
+    )
+    monkeypatch.setattr(
+        app,
+        "_render_pending_progress",
+        lambda *a, **k: pytest.fail("드레인된 큐에 조각을 다시 예약했습니다"),
+    )
+
+    app._render_pending_status(streamlit, object(), ParsedQuery("통합심의"))
+
+    assert streamlit.fragment_schedules == []
+    assert streamlit.fragment_runs == []
+    assert "fragment" not in streamlit.names()
+    assert "전체 확인 완료" in streamlit.text()
+
+
+def test_pending_status_schedules_the_fragment_while_the_queue_has_work(monkeypatch):
+    streamlit = FakeStreamlit(
+        session_state={
+            "pending_queue": [object()],
+            "pending_total": 25,
+            "pending_checked": 20,
+            "pending_found": 0,
+        }
+    )
+    monkeypatch.setattr(app, "_render_pending_progress", lambda *a, **k: None)
+
+    app._render_pending_status(streamlit, object(), ParsedQuery("통합심의"))
+
+    assert streamlit.fragment_schedules == [{"run_every": "2s"}]
+    assert streamlit.fragment_runs == ["<lambda>"]
+    # The completion caption must not fire while work is still outstanding.
+    assert "전체 확인 완료" not in streamlit.text()
+
+
+def test_pending_status_reports_how_many_extra_matches_were_found(monkeypatch):
+    streamlit = FakeStreamlit(
+        session_state={
+            "pending_queue": [],
+            "pending_total": 25,
+            "pending_checked": 25,
+            "pending_found": 3,
+        }
+    )
+    monkeypatch.setattr(app, "_render_pending_progress", lambda *a, **k: None)
+
+    app._render_pending_status(streamlit, object(), ParsedQuery("통합심의"))
+
+    assert "전체 확인 완료 (추가로 3건 발견)" in streamlit.text()
+
+
+def test_pending_status_is_silent_when_a_search_had_nothing_to_defer(monkeypatch):
+    streamlit = FakeStreamlit(session_state={"pending_queue": [], "pending_total": 0})
+    monkeypatch.setattr(app, "_render_pending_progress", lambda *a, **k: None)
+
+    app._render_pending_status(streamlit, object(), ParsedQuery("통합심의"))
+
+    assert streamlit.calls == []
+
+
+def test_pending_progress_leaves_the_completion_caption_to_the_gate(monkeypatch):
+    # The completion caption used to be duplicated inside the fragment -- both
+    # in its empty-queue early return and again at its end. Only
+    # _render_pending_status renders it now, so the fragment must not.
+    streamlit = FakeStreamlit(
+        session_state={
+            "pending_queue": [],
+            "pending_total": 25,
+            "pending_checked": 25,
+            "pending_found": 3,
+        }
+    )
+
+    app._render_pending_progress(streamlit, object(), ParsedQuery("통합심의"))
+
+    assert "전체 확인 완료" not in streamlit.text()
+
+
 def test_pending_progress_verifies_one_chunk_and_appends_confirmed_results(
     monkeypatch, result_factory
 ):

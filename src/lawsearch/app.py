@@ -264,8 +264,7 @@ def main() -> None:
         _render_compare(st, settings, response, parsed)
     else:
         _render_results(st, settings, response, parsed)
-        if st.session_state.get("pending_total", 0):
-            st.fragment(run_every="2s")(_render_pending_progress)(st, settings, parsed)
+        _render_pending_status(st, settings, parsed)
 
 
 def _handle_search(st: Any, raw: str, registry: RegionRegistry, settings: Settings, refresh: bool) -> None:
@@ -382,14 +381,31 @@ def _states_with_confirmed(
     return states
 
 
+def _render_pending_status(st: Any, settings: Settings, parsed: ParsedQuery) -> None:
+    """Keep background verification on its timer only while work remains.
+
+    The schedule is gated on ``pending_queue`` rather than ``pending_total``:
+    the total is set once per search and never cleared as verification
+    proceeds, so gating on it left the 2-second fragment re-running for the
+    rest of the session after the queue had drained. The completion caption
+    lives here, outside the fragment, so reporting the outcome does not depend
+    on the fragment still ticking.
+    """
+    if st.session_state.get("pending_queue"):
+        st.fragment(run_every="2s")(_render_pending_progress)(st, settings, parsed)
+        return
+    if st.session_state.get("pending_total", 0):
+        found = st.session_state.get("pending_found", 0)
+        st.caption(
+            f"전체 확인 완료 (추가로 {found}건 발견)" if found else "전체 확인 완료"
+        )
+
+
 def _render_pending_progress(st: Any, settings: Settings, parsed: ParsedQuery) -> None:
     queue = st.session_state.get("pending_queue")
     if not queue:
-        if st.session_state.get("pending_total", 0):
-            found = st.session_state.get("pending_found", 0)
-            st.caption(
-                f"전체 확인 완료 (추가로 {found}건 발견)" if found else "전체 확인 완료"
-            )
+        # Nothing left to verify. The completion caption is _render_pending_status's
+        # job, so this tick renders nothing rather than duplicating it.
         return
     chunk = tuple(queue[:_PENDING_CHUNK_SIZE])
     remaining = queue[_PENDING_CHUNK_SIZE:]
@@ -416,15 +432,10 @@ def _render_pending_progress(st: Any, settings: Settings, parsed: ParsedQuery) -
         # Ticks with no new matches must NOT rerun — that would defeat the point of
         # using a fragment in the first place.
         st.rerun()
-    total = st.session_state.get("pending_total", 0)
-    checked = st.session_state.get("pending_checked", 0)
     if remaining:
+        total = st.session_state.get("pending_total", 0)
+        checked = st.session_state.get("pending_checked", 0)
         st.caption(f"나머지 확인 중… ({checked} / {total})")
-    else:
-        found = st.session_state.get("pending_found", 0)
-        st.caption(
-            f"전체 확인 완료 (추가로 {found}건 발견)" if found else "전체 확인 완료"
-        )
 
 
 def _render_card(st: Any, card: CardView, keyword: str) -> None:
