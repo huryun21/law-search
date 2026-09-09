@@ -819,6 +819,121 @@ def test_pending_progress_verifies_one_chunk_and_appends_confirmed_results(
     assert existing in streamlit.session_state["response"].results
 
 
+def _pending_state(response, queue):
+    return {
+        "response": response,
+        "pending_queue": list(queue),
+        "pending_total": len(queue),
+        "pending_checked": 0,
+        "pending_found": 0,
+    }
+
+
+def test_confirmed_background_result_lifts_its_source_out_of_empty(
+    monkeypatch, result_factory
+):
+    # The priority pass retained nothing for "laws", so its group renders
+    # "검색 결과 없음" from source_states. Appending a confirmed background match
+    # without touching source_states left that stale caption above a group that
+    # now holds real results. EMPTY already carries a retrieval timestamp
+    # (SearchResponse requires one for every non-ERROR state), so the upgrade
+    # needs to add none.
+    pending = result_factory(SourceGroup.LAW, uid="p1", title="대기법1")
+    confirmed = result_factory(
+        SourceGroup.LAW, uid="p1", title="대기법1", match_context="일치 문맥"
+    )
+    response = SearchResponse(
+        results=(),
+        pending=(),
+        suggestions=(),
+        errors=(),
+        source_states={"laws": SourceState.EMPTY},
+        source_fetched_at={"laws": _fetched()},
+    )
+    streamlit = FakeStreamlit(session_state=_pending_state(response, [pending]))
+
+    async def fake_verify_pending(settings, chunk, keyword):
+        return (confirmed,)
+
+    monkeypatch.setattr(app, "_verify_pending", fake_verify_pending)
+
+    with pytest.raises(Rerun):
+        app._render_pending_progress(streamlit, object(), ParsedQuery("통합심의"))
+
+    updated = streamlit.session_state["response"]
+    assert updated.source_states["laws"] is SourceState.LIVE
+    assert updated.source_fetched_at["laws"] == _fetched()
+    assert confirmed in updated.results
+
+
+def test_confirmed_background_result_never_downgrades_a_source_state(
+    monkeypatch, result_factory
+):
+    # Only EMPTY is lifted. A source already reporting something stronger --
+    # STALE_FALLBACK here, which drives its own warning banner and timestamp --
+    # must keep saying so, and a source that gained no confirmed result must be
+    # left exactly as it was.
+    pending = result_factory(SourceGroup.ADMIN_RULE, uid="p1", title="대기규칙")
+    confirmed = result_factory(
+        SourceGroup.ADMIN_RULE, uid="p1", title="대기규칙", match_context="일치 문맥"
+    )
+    response = SearchResponse(
+        results=(),
+        pending=(),
+        suggestions=(),
+        errors=(),
+        source_states={
+            "admin_rules": SourceState.STALE_FALLBACK,
+            "laws": SourceState.EMPTY,
+        },
+        source_fetched_at={"admin_rules": _fetched(), "laws": _fetched()},
+    )
+    streamlit = FakeStreamlit(session_state=_pending_state(response, [pending]))
+
+    async def fake_verify_pending(settings, chunk, keyword):
+        return (confirmed,)
+
+    monkeypatch.setattr(app, "_verify_pending", fake_verify_pending)
+
+    with pytest.raises(Rerun):
+        app._render_pending_progress(streamlit, object(), ParsedQuery("통합심의"))
+
+    states = streamlit.session_state["response"].source_states
+    assert states["admin_rules"] is SourceState.STALE_FALLBACK
+    assert states["laws"] is SourceState.EMPTY
+
+
+def test_confirmed_background_result_adds_no_state_for_an_unsearched_source(
+    monkeypatch, result_factory
+):
+    # A source absent from source_states was never searched, and SearchResponse
+    # rejects a non-ERROR state with no retrieval timestamp -- so inventing a
+    # LIVE entry here would make the whole response unconstructible.
+    pending = result_factory(SourceGroup.MUNICIPAL, uid="p1", title="대기조례")
+    confirmed = result_factory(
+        SourceGroup.MUNICIPAL, uid="p1", title="대기조례", match_context="일치 문맥"
+    )
+    response = SearchResponse(
+        results=(),
+        pending=(),
+        suggestions=(),
+        errors=(),
+        source_states={"laws": SourceState.EMPTY},
+        source_fetched_at={"laws": _fetched()},
+    )
+    streamlit = FakeStreamlit(session_state=_pending_state(response, [pending]))
+
+    async def fake_verify_pending(settings, chunk, keyword):
+        return (confirmed,)
+
+    monkeypatch.setattr(app, "_verify_pending", fake_verify_pending)
+
+    with pytest.raises(Rerun):
+        app._render_pending_progress(streamlit, object(), ParsedQuery("통합심의"))
+
+    assert "municipal" not in streamlit.session_state["response"].source_states
+
+
 def test_pending_progress_shows_running_total_while_queue_remains(monkeypatch, result_factory):
     pending_items = [
         result_factory(SourceGroup.LAW, uid=f"p{i}", title=f"대기법{i}") for i in range(25)

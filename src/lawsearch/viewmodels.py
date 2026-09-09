@@ -189,6 +189,14 @@ def build_grouped_view(
     return tuple(view for _, view in sorted(grouped, key=lambda item: item[0]))
 
 
+def source_state_key(source: SourceGroup) -> str:
+    """The ``source_states``/``source_fetched_at`` key a result of this source
+    group was searched under. ``LAW``/``DECREE``/``MINISTERIAL_RULE``/``OTHER``
+    are all shapes ``normalize._classify_law`` produces from the one "laws"
+    search source, so they share its key."""
+    return _SOURCE_KEYS[source]
+
+
 def build_error_messages(response: SearchResponse) -> tuple[str, ...]:
     return tuple(
         f"{_SOURCE_LABELS.get(error.source, '공식 자료')}: "
