@@ -278,6 +278,65 @@ def test_provincial_filter_emptying_every_page_does_not_fail_the_whole_search(
     assert any(item.source is not SourceGroup.PROVINCIAL for item in response.results)
 
 
+def test_verification_rejecting_every_candidate_does_not_fail_the_whole_search(
+    service_factory,
+):
+    # Same architectural mismatch as the provincial-filter bug above, reached
+    # through a different route: here _fetch_page's raw payload really has a
+    # record, so both the title-scope and body-scope outcomes report LIVE.
+    # But the record's title does not literally contain the keyword and its
+    # detail body has no exact-phrase match either, so _verify_body_results
+    # rejects it from both scopes -- a normal, correct "this source has no
+    # results" case (verification exists precisely to catch matches the API's
+    # own search is too loose to reject on its own). With retained empty,
+    # _combine_state falls through to EMPTY because no outcome's raw state is
+    # EMPTY (both are LIVE), and _outcome_fetched_at then finds no outcome
+    # whose state is EMPTY either, returning None -- so SearchResponse
+    # rejects the whole response with "non-error source requires a retrieval
+    # timestamp", turning a single source's benign empty result into a
+    # generic failure screen for every source. A single-token keyword is
+    # used so the multi-word token-intersection fallback never engages.
+    keyword = "화재감지기"
+    payload = {
+        "LawSearch": {
+            "target": "eflaw",
+            "키워드": keyword,
+            "section": "bdyText",
+            "totalCnt": "1",
+            "page": "1",
+            "law": [
+                {
+                    "법령일련번호": "999999",
+                    "현행연혁코드": "현행",
+                    "법령명한글": "주차장법",
+                    "법령ID": "000001",
+                    "공포일자": "20250131",
+                    "공포번호": "20735",
+                    "소관부처명": "국토교통부",
+                    "법령구분명": "법률",
+                    "시행일자": "20250801",
+                    "법령상세링크": "/법령/주차장법",
+                }
+            ],
+        }
+    }
+    service, _ = service_factory(
+        responses={
+            ("laws_titles", keyword): payload,
+            ("laws", keyword): payload,
+        }
+    )
+
+    response = run(service.search(ParsedQuery(keyword)))
+
+    assert not [item for item in response.results if item.source is SourceGroup.LAW]
+    assert response.source_states["laws"] is SourceState.EMPTY
+    assert response.source_fetched_at["laws"] is not None
+    assert not any(error.source == "laws" for error in response.errors)
+    # The other sources must be unaffected -- the old failure took them down too.
+    assert response.source_states["admin_rules"] is not SourceState.ERROR
+
+
 def test_province_only_region_calls_no_municipal_source(service_factory):
     service, fake_api = service_factory()
     province = Region("경기도", None, "6410000")
