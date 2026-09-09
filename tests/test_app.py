@@ -319,6 +319,7 @@ def test_clear_response_also_clears_pending_state():
             "pending_checked": 1,
             "pending_found": 0,
             "pending_failed": 1,
+            "pending_last_rerun_at": 123.0,
         }
     )
 
@@ -330,6 +331,7 @@ def test_clear_response_also_clears_pending_state():
         "pending_checked",
         "pending_found",
         "pending_failed",
+        "pending_last_rerun_at",
     ):
         assert key not in streamlit.session_state
 
@@ -1251,7 +1253,153 @@ def test_pending_progress_does_not_rerun_when_verification_raises(monkeypatch, r
     assert streamlit.session_state["pending_queue"] == []
     assert streamlit.session_state["pending_checked"] == 2
     assert streamlit.session_state["pending_found"] == 0
-    assert streamlit.session_state["response"].results == ()
+
+
+def _large_pending_state(result_factory, response):
+    pending_items = [
+        result_factory(SourceGroup.LAW, uid=f"p{i}", title=f"대기법{i}") for i in range(25)
+    ]
+    return pending_items, {
+        "response": response,
+        "pending_queue": pending_items,
+        "pending_total": 25,
+        "pending_checked": 0,
+        "pending_found": 0,
+    }
+
+
+def test_pending_progress_reruns_immediately_on_the_first_confirmed_match(
+    monkeypatch, result_factory
+):
+    # No prior rerun timestamp -- this is the first time anything was
+    # confirmed, so it must surface right away rather than wait 5s for a
+    # baseline that was never set.
+    confirmed = result_factory(
+        SourceGroup.LAW, uid="p0", title="대기법0", match_context="일치 문맥"
+    )
+    response = SearchResponse(
+        results=(), pending=(), suggestions=(), errors=(),
+        source_states={}, source_fetched_at={},
+    )
+    _, state = _large_pending_state(result_factory, response)
+    streamlit = FakeStreamlit(session_state=state)
+
+    async def fake_verify_pending(settings, chunk, keyword):
+        return (confirmed,), 0
+
+    monkeypatch.setattr(app, "_verify_pending", fake_verify_pending)
+
+    with pytest.raises(Rerun):
+        app._render_pending_progress(
+            streamlit, object(), ParsedQuery("통합심의"), monotonic=lambda: 50.0
+        )
+
+    assert streamlit.reruns == 1
+    assert streamlit.session_state["pending_last_rerun_at"] == 50.0
+
+
+def test_pending_progress_throttles_reruns_to_once_per_five_seconds(
+    monkeypatch, result_factory
+):
+    # A full-page rerun on every confirming chunk means the page reloads
+    # every ~2s for the whole verification run on any search with a decent
+    # hit rate -- the progress bar never stays on screen long enough to be
+    # seen. Batch confirmed matches and only surface them once 5s have
+    # passed since the last time the page actually refreshed.
+    confirmed = result_factory(
+        SourceGroup.LAW, uid="p0", title="대기법0", match_context="일치 문맥"
+    )
+    response = SearchResponse(
+        results=(), pending=(), suggestions=(), errors=(),
+        source_states={}, source_fetched_at={},
+    )
+    _, state = _large_pending_state(result_factory, response)
+    state["pending_last_rerun_at"] = 100.0
+    streamlit = FakeStreamlit(session_state=state)
+
+    async def fake_verify_pending(settings, chunk, keyword):
+        return (confirmed,), 0
+
+    monkeypatch.setattr(app, "_verify_pending", fake_verify_pending)
+
+    app._render_pending_progress(
+        streamlit, object(), ParsedQuery("통합심의"), monotonic=lambda: 102.0
+    )
+
+    assert streamlit.reruns == 0
+    assert streamlit.session_state["pending_last_rerun_at"] == 100.0
+    # The confirmed match is not lost -- it's merged and will show at the
+    # next rerun, whenever that ends up being.
+    assert confirmed in streamlit.session_state["response"].results
+
+
+def test_pending_progress_reruns_once_five_seconds_have_passed(
+    monkeypatch, result_factory
+):
+    confirmed = result_factory(
+        SourceGroup.LAW, uid="p0", title="대기법0", match_context="일치 문맥"
+    )
+    response = SearchResponse(
+        results=(), pending=(), suggestions=(), errors=(),
+        source_states={}, source_fetched_at={},
+    )
+    _, state = _large_pending_state(result_factory, response)
+    state["pending_last_rerun_at"] = 100.0
+    streamlit = FakeStreamlit(session_state=state)
+
+    async def fake_verify_pending(settings, chunk, keyword):
+        return (confirmed,), 0
+
+    monkeypatch.setattr(app, "_verify_pending", fake_verify_pending)
+
+    with pytest.raises(Rerun):
+        app._render_pending_progress(
+            streamlit, object(), ParsedQuery("통합심의"), monotonic=lambda: 105.0
+        )
+
+    assert streamlit.reruns == 1
+    assert streamlit.session_state["pending_last_rerun_at"] == 105.0
+
+
+def test_pending_progress_reruns_on_the_final_chunk_even_when_throttled(
+    monkeypatch, result_factory
+):
+    # The last chunk must always surface its results -- otherwise a confirmed
+    # match found right as the queue drains would need an unrelated rerun to
+    # ever become visible, reintroducing the bug the original rerun fix
+    # solved (results silently stored but never shown).
+    pending_only = result_factory(SourceGroup.LAW, uid="p1", title="대기법1")
+    confirmed = result_factory(
+        SourceGroup.LAW, uid="p1", title="대기법1", match_context="일치 문맥"
+    )
+    response = SearchResponse(
+        results=(), pending=(), suggestions=(), errors=(),
+        source_states={}, source_fetched_at={},
+    )
+    streamlit = FakeStreamlit(
+        session_state={
+            "response": response,
+            "pending_queue": [pending_only],
+            "pending_total": 1,
+            "pending_checked": 0,
+            "pending_found": 0,
+            "pending_last_rerun_at": 100.0,
+        }
+    )
+
+    async def fake_verify_pending(settings, chunk, keyword):
+        return (confirmed,), 0
+
+    monkeypatch.setattr(app, "_verify_pending", fake_verify_pending)
+
+    with pytest.raises(Rerun):
+        app._render_pending_progress(
+            streamlit, object(), ParsedQuery("통합심의"), monotonic=lambda: 100.5
+        )
+
+    assert streamlit.reruns == 1
+    assert streamlit.session_state["pending_last_rerun_at"] == 100.5
+    assert confirmed in streamlit.session_state["response"].results
 
 
 def test_card_match_line_is_escaped_and_clamped(result_factory):

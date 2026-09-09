@@ -8,10 +8,11 @@ from __future__ import annotations
 import asyncio
 import html
 import logging
+import time
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Awaitable, Mapping, TypeVar
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Mapping, TypeVar
 
 from lawsearch.api import LawApiClient
 from lawsearch.cache import CacheStore
@@ -310,6 +311,7 @@ def _clear_response(st: Any) -> None:
     st.session_state.pop("pending_checked", None)
     st.session_state.pop("pending_found", None)
     st.session_state.pop("pending_failed", None)
+    st.session_state.pop("pending_last_rerun_at", None)
     _reset_workspace(st)
     _clear_detail_state(st)
 
@@ -419,7 +421,16 @@ def _render_pending_failures(st: Any) -> None:
         )
 
 
-def _render_pending_progress(st: Any, settings: Settings, parsed: ParsedQuery) -> None:
+_PENDING_RERUN_INTERVAL_SECONDS = 5.0
+
+
+def _render_pending_progress(
+    st: Any,
+    settings: Settings,
+    parsed: ParsedQuery,
+    *,
+    monotonic: Callable[[], float] = time.monotonic,
+) -> None:
     queue = st.session_state.get("pending_queue")
     if not queue:
         # Nothing left to verify. The completion caption is _render_pending_status's
@@ -447,12 +458,23 @@ def _render_pending_progress(st: Any, settings: Settings, parsed: ParsedQuery) -
             source_states=_states_with_confirmed(response, confirmed),
         )
         # All state this tick needs to persist (queue/counters/response) is already
-        # written above. Force a full-page rerun so main()'s outer _render_results/
-        # _render_sidebar calls (which run outside this fragment) pick up the new
-        # results immediately, instead of staying frozen until an unrelated rerun.
-        # Ticks with no new matches must NOT rerun — that would defeat the point of
-        # using a fragment in the first place.
-        st.rerun()
+        # written above, whether or not this tick reruns. A full-page rerun makes
+        # main()'s outer _render_results/_render_sidebar (which run outside this
+        # fragment) pick up the new results, but doing that on every confirming
+        # chunk means the whole page reloads roughly every 2s on any search with
+        # a decent hit rate -- long enough to make the app feel like it never
+        # settles, and too fast for the progress bar below to ever stay on
+        # screen. Batch confirmed matches instead and only rerun once
+        # _PENDING_RERUN_INTERVAL_SECONDS have passed since the last rerun, with
+        # one exception: the final chunk (remaining empty) always reruns, or a
+        # match confirmed right as the queue drains would stay invisible until
+        # some unrelated full rerun -- the exact bug the original fix solved.
+        now = monotonic()
+        last_rerun = st.session_state.get("pending_last_rerun_at")
+        due = last_rerun is None or (now - last_rerun) >= _PENDING_RERUN_INTERVAL_SECONDS
+        if due or not remaining:
+            st.session_state.pending_last_rerun_at = now
+            st.rerun()
     if remaining:
         total = st.session_state.get("pending_total", 0)
         checked = st.session_state.get("pending_checked", 0)
