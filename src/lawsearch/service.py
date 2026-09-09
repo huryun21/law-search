@@ -28,7 +28,11 @@ from lawsearch.ranking import rank_results
 SourceOutcome = tuple[
     tuple[SearchResult, ...], SourceState, bool, datetime | None
 ]
-_DETAIL_VERIFICATION_CONCURRENCY = 4
+# Raised from 4 after confirming against the live API that 16 concurrent
+# requests complete with no errors and no visible slowdown per request
+# (2026-09-09). Detail-verification throughput was the main bottleneck behind
+# slow searches once pagination started fetching every page of candidates.
+_DETAIL_VERIFICATION_CONCURRENCY = 8
 
 
 class SearchValidationError(ValueError):

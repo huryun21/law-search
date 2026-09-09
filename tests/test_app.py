@@ -846,6 +846,25 @@ def test_pending_status_reports_how_many_extra_matches_were_found(monkeypatch):
     assert "전체 확인 완료 (추가로 3건 발견)" in streamlit.text()
 
 
+def test_pending_status_completion_uses_a_success_banner_not_a_caption(monkeypatch):
+    # A plain caption sits below dozens or hundreds of result cards and is easy
+    # to miss. The completion message needs to stand out on its own.
+    streamlit = FakeStreamlit(
+        session_state={
+            "pending_queue": [],
+            "pending_total": 25,
+            "pending_checked": 25,
+            "pending_found": 3,
+        }
+    )
+    monkeypatch.setattr(app, "_render_pending_progress", lambda *a, **k: None)
+
+    app._render_pending_status(streamlit, object(), ParsedQuery("통합심의"))
+
+    assert "success" in streamlit.names()
+    assert "전체 확인 완료 (추가로 3건 발견)" in streamlit.text()
+
+
 def test_pending_status_is_silent_when_a_search_had_nothing_to_defer(monkeypatch):
     streamlit = FakeStreamlit(session_state={"pending_queue": [], "pending_total": 0})
     monkeypatch.setattr(app, "_render_pending_progress", lambda *a, **k: None)
@@ -1170,6 +1189,38 @@ def test_pending_progress_shows_running_total_while_queue_remains(monkeypatch, r
     assert len(streamlit.session_state["pending_queue"]) == 5
     assert streamlit.session_state["pending_checked"] == 20
     assert "나머지 확인 중… (20 / 25)" in streamlit.text()
+
+
+def test_pending_progress_shows_a_progress_bar_while_queue_remains(monkeypatch, result_factory):
+    # A caption alone gives no visual sense of how much work is left. A
+    # progress bar makes "still working, not stuck" obvious at a glance.
+    pending_items = [
+        result_factory(SourceGroup.LAW, uid=f"p{i}", title=f"대기법{i}") for i in range(25)
+    ]
+    response = SearchResponse(
+        results=(), pending=(), suggestions=(), errors=(),
+        source_states={}, source_fetched_at={},
+    )
+    streamlit = FakeStreamlit(
+        session_state={
+            "response": response,
+            "pending_queue": pending_items,
+            "pending_total": 25,
+            "pending_checked": 0,
+            "pending_found": 0,
+        }
+    )
+
+    async def fake_verify_pending(settings, chunk, keyword):
+        return (), 0
+
+    monkeypatch.setattr(app, "_verify_pending", fake_verify_pending)
+
+    app._render_pending_progress(streamlit, object(), ParsedQuery("통합심의"))
+
+    _, args, _ = next(call for call in streamlit.calls if call[0] == "progress")
+    assert args[0] == pytest.approx(20 / 25)
+    assert "나머지 확인 중… (20 / 25)" in args
 
 
 def test_pending_progress_does_not_rerun_when_verification_raises(monkeypatch, result_factory):
