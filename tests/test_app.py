@@ -850,6 +850,37 @@ def test_pending_progress_shows_running_total_while_queue_remains(monkeypatch, r
     assert "나머지 확인 중… (20 / 25)" in streamlit.text()
 
 
+def test_pending_progress_does_not_rerun_when_verification_raises(monkeypatch, result_factory):
+    pending_a = result_factory(SourceGroup.LAW, uid="p1", title="대기법1")
+    pending_b = result_factory(SourceGroup.LAW, uid="p2", title="대기법2")
+    response = SearchResponse(
+        results=(), pending=(), suggestions=(), errors=(),
+        source_states={}, source_fetched_at={},
+    )
+    streamlit = FakeStreamlit(
+        session_state={
+            "response": response,
+            "pending_queue": [pending_a, pending_b],
+            "pending_total": 2,
+            "pending_checked": 0,
+            "pending_found": 0,
+        }
+    )
+
+    async def fake_verify_pending(settings, chunk, keyword):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(app, "_verify_pending", fake_verify_pending)
+
+    app._render_pending_progress(streamlit, object(), ParsedQuery("통합심의"))
+
+    assert streamlit.reruns == 0
+    assert streamlit.session_state["pending_queue"] == []
+    assert streamlit.session_state["pending_checked"] == 2
+    assert streamlit.session_state["pending_found"] == 0
+    assert streamlit.session_state["response"].results == ()
+
+
 def test_card_match_line_is_escaped_and_clamped(result_factory):
     hit = replace(
         result_factory(SourceGroup.LAW, uid="l1", title="건축법"),
