@@ -39,6 +39,8 @@ class FakeStreamlit:
         self.session_state = SessionState(session_state or {})
         self.calls: list[tuple[str, tuple, dict]] = []
         self.reruns = 0
+        self.fragment_schedules: list[dict] = []
+        self.fragment_runs: list[str] = []
         self._buttons = dict(buttons or {})
         self._selections = dict(selections or {})
 
@@ -116,6 +118,26 @@ class FakeStreamlit:
     def rerun(self):
         self.reruns += 1
         raise Rerun()
+
+    def fragment(self, *a, **k):
+        """Record that a fragment was scheduled, then run it once.
+
+        Real ``st.fragment(run_every=...)`` runs the decorated function on this
+        script run and re-runs it on the timer afterwards -- so a schedule that
+        never happens is a timer that never fires. ``fragment_schedules`` is
+        what a test asserts on to tell "scheduled" from "not scheduled".
+        """
+        self._record("fragment", *a, **k)
+        self.fragment_schedules.append(dict(k))
+
+        def decorate(function):
+            def scheduled(*args, **kwargs):
+                self.fragment_runs.append(getattr(function, "__name__", repr(function)))
+                return function(*args, **kwargs)
+
+            return scheduled
+
+        return decorate
 
     # layout -------------------------------------------------
     def columns(self, spec, *a, **k):
