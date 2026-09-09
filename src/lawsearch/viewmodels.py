@@ -21,6 +21,7 @@ from lawsearch.models import (
     SourceGroup,
     SourceState,
 )
+from lawsearch.prioritization import split_by_relevance
 
 _SEOUL = ZoneInfo("Asia/Seoul")
 _SOURCE_ORDER = (
@@ -73,6 +74,7 @@ class ResultGroupView:
     status_message: str
     fetched_at: datetime | None
     expanded: bool
+    less_relevant_results: tuple[SearchResult, ...] = ()
 
 
 def build_grouped_view(
@@ -144,6 +146,9 @@ def build_grouped_view(
                     if is_additional
                     else title_priority
                 )
+            relevant_body_results, less_relevant_body_results = split_by_relevance(
+                body_results
+            )
             grouped.append(
                 (
                     body_priority,
@@ -153,11 +158,12 @@ def build_grouped_view(
                             if is_additional
                             else label
                         ),
-                        results=body_results,
+                        results=relevant_body_results,
                         state=state,
                         status_message=_status_message(state, fetched_at),
                         fetched_at=fetched_at,
                         expanded=not is_additional,
+                        less_relevant_results=less_relevant_body_results,
                     ),
                 )
             )

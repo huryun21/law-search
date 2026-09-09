@@ -493,6 +493,57 @@ def test_results_card_hides_button_for_non_official_url(result_factory):
     assert "link_button" not in streamlit.names()
 
 
+def test_results_view_collapses_less_relevant_body_matches_behind_an_expander(
+    result_factory,
+):
+    relevant = replace(
+        result_factory(SourceGroup.LAW, uid="building", title="건축법"),
+        scope=SearchScope.BODY,
+        match_context="제1조 — 건축",
+    )
+    less_relevant = replace(
+        result_factory(SourceGroup.LAW, uid="customs", title="관세법"),
+        scope=SearchScope.BODY,
+        match_context="제1조 — 관세",
+    )
+    response = SearchResponse(
+        results=(relevant, less_relevant),
+        suggestions=(),
+        errors=(),
+        source_states={"laws": SourceState.LIVE},
+        source_fetched_at={"laws": _fetched()},
+    )
+    streamlit = FakeStreamlit()
+
+    app._render_results(streamlit, object(), response, ParsedQuery("주차장"))
+
+    expander_calls = [args for name, args, _ in streamlit.calls if name == "expander"]
+    assert len(expander_calls) == 1
+    assert "관련성 낮은 결과 1건 더보기" in expander_calls[0][0]
+    assert "관세법" in streamlit.text()
+    assert "건축법" in streamlit.text()
+
+
+def test_results_view_has_no_expander_when_nothing_is_less_relevant(result_factory):
+    relevant = replace(
+        result_factory(SourceGroup.LAW, uid="building", title="건축법"),
+        scope=SearchScope.BODY,
+        match_context="제1조 — 건축",
+    )
+    response = SearchResponse(
+        results=(relevant,),
+        suggestions=(),
+        errors=(),
+        source_states={"laws": SourceState.LIVE},
+        source_fetched_at={"laws": _fetched()},
+    )
+    streamlit = FakeStreamlit()
+
+    app._render_results(streamlit, object(), response, ParsedQuery("주차장"))
+
+    assert "expander" not in streamlit.names()
+
+
 def test_sidebar_lists_every_result_as_a_nav_button(result_factory):
     response = _card_response(result_factory)
     streamlit = FakeStreamlit(session_state={"response": response})

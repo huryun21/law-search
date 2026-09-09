@@ -275,6 +275,76 @@ def test_empty_ordinance_groups_keep_priority_before_national_results(
     ]
 
 
+def test_body_group_splits_off_titles_matching_no_domain_keyword(result_factory):
+    # "건축법" contains "건축" (a domain keyword) and stays immediately visible;
+    # "관세법" matches none, so it's real but deprioritized -- available, not lost.
+    relevant = replace(
+        result_factory(SourceGroup.LAW, uid="building", title="건축법"),
+        scope=SearchScope.BODY,
+    )
+    less_relevant = replace(
+        result_factory(SourceGroup.LAW, uid="customs", title="관세법"),
+        scope=SearchScope.BODY,
+    )
+    response = SearchResponse(
+        results=(relevant, less_relevant),
+        suggestions=(),
+        errors=(),
+        source_states={"laws": SourceState.LIVE},
+        source_fetched_at={"laws": datetime(2026, 8, 11, tzinfo=UTC)},
+    )
+
+    group = build_grouped_view(response)[0]
+
+    assert [item.uid for item in group.results] == ["building"]
+    assert [item.uid for item in group.less_relevant_results] == ["customs"]
+
+
+def test_body_group_survives_when_every_result_is_less_relevant(result_factory):
+    # None of these titles match a domain keyword. The group must still
+    # render (with an empty relevant list) rather than vanish -- silently
+    # dropping every result for a source would defeat the point of keeping
+    # them available behind "더보기".
+    only_less_relevant = replace(
+        result_factory(SourceGroup.LAW, uid="customs", title="관세법"),
+        scope=SearchScope.BODY,
+    )
+    response = SearchResponse(
+        results=(only_less_relevant,),
+        suggestions=(),
+        errors=(),
+        source_states={"laws": SourceState.LIVE},
+        source_fetched_at={"laws": datetime(2026, 8, 11, tzinfo=UTC)},
+    )
+
+    group = build_grouped_view(response)[0]
+
+    assert group.results == ()
+    assert [item.uid for item in group.less_relevant_results] == ["customs"]
+
+
+def test_title_group_is_never_split_by_relevance(result_factory):
+    # A title match is the law the user searched for by name -- it must
+    # always show, regardless of whether its title happens to contain a
+    # construction-domain keyword.
+    title_hit = replace(
+        result_factory(SourceGroup.LAW, uid="customs", title="관세법"),
+        scope=SearchScope.TITLE,
+    )
+    response = SearchResponse(
+        results=(title_hit,),
+        suggestions=(),
+        errors=(),
+        source_states={"laws": SourceState.LIVE},
+        source_fetched_at={"laws": datetime(2026, 8, 11, tzinfo=UTC)},
+    )
+
+    group = build_grouped_view(response)[0]
+
+    assert [item.uid for item in group.results] == ["customs"]
+    assert group.less_relevant_results == ()
+
+
 def test_zero_result_stale_group_uses_source_retrieval_timestamp():
     fetched = datetime(2026, 8, 9, 3, 4, 5, tzinfo=UTC)
     response = SearchResponse(
