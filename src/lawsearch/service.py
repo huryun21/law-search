@@ -389,9 +389,18 @@ class SearchService:
             current_page = page
             while total is not None and len(accumulated) < total and results:
                 current_page += 1
-                results, page_state, page_error, page_fetched_at, total = await self._fetch_page(
-                    name, group, query, quality, parsed, refresh, current_page, scope
+                results, page_state, page_error, page_fetched_at, page_total = (
+                    await self._fetch_page(
+                        name, group, query, quality, parsed, refresh, current_page, scope
+                    )
                 )
+                if page_total is not None:
+                    # Keep page 1's count whenever a later page reports none.
+                    # Overwriting `total` unconditionally meant a single payload
+                    # missing totalCnt set it to None, which made this loop's own
+                    # `total is not None` guard false on the next iteration and
+                    # silently stopped pagination while real pages remained.
+                    total = page_total
                 if page_error:
                     # A later page failed. Keep the pages already accumulated --
                     # partial candidates are still useful -- but report the

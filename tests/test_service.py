@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -1043,23 +1044,27 @@ def test_law_search_fetches_additional_pages_until_total_count_is_covered(
 
 
 def _law_page(total, *titles):
-    return {
-        "LawSearch": {
-            "totalCnt": str(total),
-            "law": [
-                {
-                    "법령ID": str(4000 + index),
-                    "법령일련번호": str(4000 + index),
-                    "법령명한글": title,
-                    "법령구분명": "법률",
-                    "현행연혁코드": "현행",
-                    "공포일자": "20260101",
-                    "법령상세링크": f"/법령/{4000 + index}",
-                }
-                for index, title in enumerate(titles, 1)
-            ],
-        }
-    }
+    """A LawSearch page payload. Each record's uid is derived from its title so
+    records on different pages never collide in _retain_best_results's
+    (source, uid) map -- a shared uid would silently collapse two pages'
+    distinct records into one and mask whichever page the test is about."""
+    records = []
+    for title in titles:
+        uid = str(
+            int(hashlib.sha256(title.encode("utf-8")).hexdigest()[:8], 16)
+        )
+        records.append(
+            {
+                "법령ID": uid,
+                "법령일련번호": uid,
+                "법령명한글": title,
+                "법령구분명": "법률",
+                "현행연혁코드": "현행",
+                "공포일자": "20260101",
+                "법령상세링크": f"/법령/{uid}",
+            }
+        )
+    return {"LawSearch": {"totalCnt": str(total), "law": records}}
 
 
 def test_page_one_result_survives_a_failure_on_a_later_page(
@@ -1115,6 +1120,36 @@ def test_mid_pagination_failure_flags_the_source_instead_of_passing_silently(
         "the partial failure must surface through the source's existing "
         "SourceError plumbing"
     )
+
+
+def test_pagination_continues_when_a_later_page_omits_the_total_count(
+    service_factory, parsed_plain
+):
+    # Page 1 reports totalCnt=3; page 2's payload omits totalCnt entirely (a
+    # shape the API is free to return, and one extract_total_count answers with
+    # None). `total` used to be reassigned from EVERY page, so page 2 set it to
+    # None, the loop's own `total is not None` guard went false, and pagination
+    # stopped one page early -- page 3's real match silently missing. Page 1's
+    # count must survive a later page that reports none.
+    page_three = _law_page(3, "마지막장 단속 조례")
+    del page_three["LawSearch"]["totalCnt"]
+    page_two = _law_page(3, "중간장 단속법")
+    del page_two["LawSearch"]["totalCnt"]
+    service, _ = service_factory(
+        responses={
+            ("laws", "주차 단속", 1): _law_page(3, "첫장 단속법"),
+            ("laws", "주차 단속", 2): page_two,
+            ("laws", "주차 단속", 3): page_three,
+        }
+    )
+
+    response = run(service.search(parsed_plain))
+
+    titles = {item.title for item in response.results}
+    assert "마지막장 단속 조례" in titles, (
+        "page 3 must still be fetched after page 2 reported no total count"
+    )
+    assert {"첫장 단속법", "중간장 단속법"} <= titles
 
 
 def test_priority_keywords_defer_non_matching_candidates_to_pending(
