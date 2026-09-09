@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import html
 import logging
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Mapping, TypeVar
@@ -24,6 +25,7 @@ from lawsearch.models import (
 )
 from lawsearch.prioritization import PRIORITY_KEYWORDS
 from lawsearch.query import QueryError, parse_query
+from lawsearch.ranking import rank_results
 from lawsearch.regions import RegionRegistry
 from lawsearch.service import SearchService
 from lawsearch.viewmodels import (
@@ -115,6 +117,14 @@ async def _search(settings: Settings, parsed: ParsedQuery, refresh: bool) -> Sea
     async with LawApiClient(resolve_api_key(settings, _app_secrets())) as api:
         service = SearchService(api, CacheStore(settings.cache_path), lambda: datetime.now(UTC))
         return await service.search(parsed, refresh=refresh, priority_keywords=PRIORITY_KEYWORDS)
+
+
+async def _verify_pending(
+    settings: Settings, pending: tuple[SearchResult, ...], keyword: str
+) -> tuple[SearchResult, ...]:
+    async with LawApiClient(resolve_api_key(settings, _app_secrets())) as api:
+        service = SearchService(api, CacheStore(settings.cache_path), lambda: datetime.now(UTC))
+        return await service.verify_pending(pending, keyword)
 
 
 async def _contexts(
@@ -253,6 +263,8 @@ def main() -> None:
         _render_compare(st, settings, response, parsed)
     else:
         _render_results(st, settings, response, parsed)
+        if st.session_state.get("pending_total", 0):
+            st.fragment(run_every="2s")(_render_pending_progress)(st, settings, parsed)
 
 
 def _handle_search(st: Any, raw: str, registry: RegionRegistry, settings: Settings, refresh: bool) -> None:
@@ -343,6 +355,43 @@ def _render_results(
             for column, card in zip(columns, row):
                 with column:
                     _render_card(st, card, parsed.keyword)
+
+
+_PENDING_CHUNK_SIZE = 20
+
+
+def _render_pending_progress(st: Any, settings: Settings, parsed: ParsedQuery) -> None:
+    queue = st.session_state.get("pending_queue")
+    if not queue:
+        if st.session_state.get("pending_total", 0):
+            found = st.session_state.get("pending_found", 0)
+            st.caption(
+                f"전체 확인 완료 (추가로 {found}건 발견)" if found else "전체 확인 완료"
+            )
+        return
+    chunk = tuple(queue[:_PENDING_CHUNK_SIZE])
+    remaining = queue[_PENDING_CHUNK_SIZE:]
+    try:
+        confirmed = _run(_verify_pending(settings, chunk, parsed.keyword))
+    except Exception as error:
+        _logger.warning("나머지 결과 확인 실패: %s", type(error).__name__)
+        confirmed = ()
+    st.session_state.pending_queue = remaining
+    st.session_state.pending_checked = st.session_state.get("pending_checked", 0) + len(chunk)
+    if confirmed:
+        st.session_state.pending_found = st.session_state.get("pending_found", 0) + len(confirmed)
+        response = st.session_state.response
+        combined = rank_results(response.results + confirmed, parsed.region, parsed.keyword)
+        st.session_state.response = replace(response, results=combined)
+    total = st.session_state.get("pending_total", 0)
+    checked = st.session_state.get("pending_checked", 0)
+    if remaining:
+        st.caption(f"나머지 확인 중… ({checked} / {total})")
+    else:
+        found = st.session_state.get("pending_found", 0)
+        st.caption(
+            f"전체 확인 완료 (추가로 {found}건 발견)" if found else "전체 확인 완료"
+        )
 
 
 def _render_card(st: Any, card: CardView, keyword: str) -> None:
