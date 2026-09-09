@@ -237,6 +237,46 @@ def test_provincial_pagination_recovers_match_after_page_one_filters_to_empty(
     assert {item.authority for item in provincial_results} == {"경기도"}
 
 
+def test_provincial_filter_emptying_every_page_does_not_fail_the_whole_search(
+    service_factory, parsed_pyeongtaek
+):
+    # Every raw provincial record here is a subordinate-municipality leak, so
+    # _filter_provincial_results strips the source down to nothing on BOTH the
+    # title-scope and the body-scope pass. _fetch_page computes its state from
+    # the RAW payload, so each outcome reported LIVE; with no retained result,
+    # _combine_state resolved the source to EMPTY, and _outcome_fetched_at then
+    # looked for an outcome whose own state was EMPTY, found none, and returned
+    # None -- making SearchResponse.__post_init__ reject the entire response
+    # ("non-error source requires a retrieval timestamp") and turning every
+    # source's results into a generic failure screen. This must go through
+    # search(): the breakage lives in the response invariant, so a
+    # _search_variant-level assertion would not see it.
+    #
+    # Stubbing BOTH provincial operations is what makes the case reachable --
+    # FakeApi's default title payload is totalCnt=0, which would contribute a
+    # genuinely-EMPTY outcome and hand _outcome_fetched_at a timestamp,
+    # masking the bug.
+    leaked = ordinance_payload("경기도 광명시", "경기도 평택시")
+    service, _ = service_factory(
+        responses={
+            ("provincial_titles", "대수"): leaked,
+            ("provincial", "대수"): leaked,
+        }
+    )
+
+    response = run(service.search(ParsedQuery("대수", parsed_pyeongtaek.region)))
+
+    assert not [
+        item for item in response.results if item.source is SourceGroup.PROVINCIAL
+    ]
+    assert response.source_states["provincial"] is SourceState.EMPTY
+    assert response.source_fetched_at["provincial"] is not None
+    assert not any(error.source == "provincial" for error in response.errors)
+    # The other sources must be unaffected -- the old failure took them down too.
+    assert response.source_states["laws"] is not SourceState.ERROR
+    assert any(item.source is not SourceGroup.PROVINCIAL for item in response.results)
+
+
 def test_province_only_region_calls_no_municipal_source(service_factory):
     service, fake_api = service_factory()
     province = Region("경기도", None, "6410000")
