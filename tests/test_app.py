@@ -808,14 +808,15 @@ def test_pending_progress_verifies_one_chunk_and_appends_confirmed_results(
 
     monkeypatch.setattr(app, "_verify_pending", fake_verify_pending)
 
-    app._render_pending_progress(streamlit, object(), ParsedQuery("통합심의"))
+    with pytest.raises(Rerun):
+        app._render_pending_progress(streamlit, object(), ParsedQuery("통합심의"))
 
+    assert streamlit.reruns == 1
     assert streamlit.session_state["pending_queue"] == []
     assert streamlit.session_state["pending_checked"] == 2
     assert streamlit.session_state["pending_found"] == 1
     assert confirmed in streamlit.session_state["response"].results
     assert existing in streamlit.session_state["response"].results
-    assert "전체 확인 완료 (추가로 1건 발견)" in streamlit.text()
 
 
 def test_pending_progress_shows_running_total_while_queue_remains(monkeypatch, result_factory):

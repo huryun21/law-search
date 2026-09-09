@@ -383,6 +383,13 @@ def _render_pending_progress(st: Any, settings: Settings, parsed: ParsedQuery) -
         response = st.session_state.response
         combined = rank_results(response.results + confirmed, parsed.region, parsed.keyword)
         st.session_state.response = replace(response, results=combined)
+        # All state this tick needs to persist (queue/counters/response) is already
+        # written above. Force a full-page rerun so main()'s outer _render_results/
+        # _render_sidebar calls (which run outside this fragment) pick up the new
+        # results immediately, instead of staying frozen until an unrelated rerun.
+        # Ticks with no new matches must NOT rerun — that would defeat the point of
+        # using a fragment in the first place.
+        st.rerun()
     total = st.session_state.get("pending_total", 0)
     checked = st.session_state.get("pending_checked", 0)
     if remaining:
