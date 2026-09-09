@@ -766,6 +766,89 @@ def test_workspace_controls_refresh_reruns_the_saved_query(monkeypatch, result_f
     assert calls == [(parsed, True)]
 
 
+def test_pending_progress_does_nothing_when_no_pending_work():
+    streamlit = FakeStreamlit(session_state={"pending_total": 0})
+
+    app._render_pending_progress(streamlit, object(), ParsedQuery("통합심의"))
+
+    assert streamlit.calls == []
+
+
+def test_pending_progress_verifies_one_chunk_and_appends_confirmed_results(
+    monkeypatch, result_factory
+):
+    pending_a = result_factory(SourceGroup.LAW, uid="p1", title="대기법1")
+    pending_b = result_factory(SourceGroup.LAW, uid="p2", title="대기법2")
+    confirmed = result_factory(
+        SourceGroup.LAW, uid="p1", title="대기법1", match_context="일치 문맥"
+    )
+    existing = result_factory(SourceGroup.LAW, uid="e1", title="기존 법령")
+    response = SearchResponse(
+        results=(existing,),
+        pending=(),
+        suggestions=(),
+        errors=(),
+        source_states={},
+        source_fetched_at={},
+    )
+    streamlit = FakeStreamlit(
+        session_state={
+            "response": response,
+            "pending_queue": [pending_a, pending_b],
+            "pending_total": 2,
+            "pending_checked": 0,
+            "pending_found": 0,
+        }
+    )
+
+    async def fake_verify_pending(settings, chunk, keyword):
+        assert chunk == (pending_a, pending_b)
+        assert keyword == "통합심의"
+        return (confirmed,)
+
+    monkeypatch.setattr(app, "_verify_pending", fake_verify_pending)
+
+    app._render_pending_progress(streamlit, object(), ParsedQuery("통합심의"))
+
+    assert streamlit.session_state["pending_queue"] == []
+    assert streamlit.session_state["pending_checked"] == 2
+    assert streamlit.session_state["pending_found"] == 1
+    assert confirmed in streamlit.session_state["response"].results
+    assert existing in streamlit.session_state["response"].results
+    assert "전체 확인 완료 (추가로 1건 발견)" in streamlit.text()
+
+
+def test_pending_progress_shows_running_total_while_queue_remains(monkeypatch, result_factory):
+    pending_items = [
+        result_factory(SourceGroup.LAW, uid=f"p{i}", title=f"대기법{i}") for i in range(25)
+    ]
+    response = SearchResponse(
+        results=(), pending=(), suggestions=(), errors=(),
+        source_states={}, source_fetched_at={},
+    )
+    streamlit = FakeStreamlit(
+        session_state={
+            "response": response,
+            "pending_queue": pending_items,
+            "pending_total": 25,
+            "pending_checked": 0,
+            "pending_found": 0,
+        }
+    )
+
+    async def fake_verify_pending(settings, chunk, keyword):
+        assert len(chunk) == 20
+        return ()
+
+    monkeypatch.setattr(app, "_verify_pending", fake_verify_pending)
+
+    app._render_pending_progress(streamlit, object(), ParsedQuery("통합심의"))
+
+    assert len(streamlit.session_state["pending_queue"]) == 5
+    assert streamlit.session_state["pending_checked"] == 20
+    assert "나머지 확인 중… (20 / 25)" in streamlit.text()
+
+
 def test_card_match_line_is_escaped_and_clamped(result_factory):
     hit = replace(
         result_factory(SourceGroup.LAW, uid="l1", title="건축법"),
