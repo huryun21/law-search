@@ -295,15 +295,26 @@ class SearchService:
         pending: tuple[SearchResult, ...],
         keyword: str,
         refresh: bool = False,
-    ) -> tuple[SearchResult, ...]:
-        """Verify a batch of previously-deferred candidates. Silently drops
-        any that fail verification or don't have an exact match -- this is
-        best-effort background work, never a source of user-facing errors."""
+    ) -> tuple[tuple[SearchResult, ...], int]:
+        """Verify a batch of previously-deferred candidates.
+
+        Returns the confirmed exact matches and how many candidates could not
+        be checked at all (their detail fetch failed). A candidate that was
+        checked and simply has no exact match is not a failure -- it is a
+        correct rejection, and counting it would be indistinguishable from a
+        real match this search never got to see. This stays best-effort
+        background work rather than a source of user-facing errors, but the
+        caller needs the failure count to tell the user something went
+        unchecked instead of dropping it in silence.
+        """
         semaphore = asyncio.Semaphore(_DETAIL_VERIFICATION_CONCURRENCY)
         verified = await asyncio.gather(
             *(self._verify_one(result, keyword, refresh, semaphore) for result in pending)
         )
-        return tuple(result for result, _ in verified if result is not None)
+        return (
+            tuple(result for result, _ in verified if result is not None),
+            sum(1 for _, failed in verified if failed),
+        )
 
     async def _fetch_page(
         self,

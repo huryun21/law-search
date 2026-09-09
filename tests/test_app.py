@@ -308,6 +308,7 @@ def test_perform_search_seeds_pending_queue_from_response(monkeypatch, result_fa
     assert streamlit.session_state["pending_total"] == 1
     assert streamlit.session_state["pending_checked"] == 0
     assert streamlit.session_state["pending_found"] == 0
+    assert streamlit.session_state["pending_failed"] == 0
 
 
 def test_clear_response_also_clears_pending_state():
@@ -317,12 +318,19 @@ def test_clear_response_also_clears_pending_state():
             "pending_total": 2,
             "pending_checked": 1,
             "pending_found": 0,
+            "pending_failed": 1,
         }
     )
 
     app._clear_response(streamlit)
 
-    for key in ("pending_queue", "pending_total", "pending_checked", "pending_found"):
+    for key in (
+        "pending_queue",
+        "pending_total",
+        "pending_checked",
+        "pending_found",
+        "pending_failed",
+    ):
         assert key not in streamlit.session_state
 
 
@@ -847,6 +855,114 @@ def test_pending_status_is_silent_when_a_search_had_nothing_to_defer(monkeypatch
     assert streamlit.calls == []
 
 
+def test_pending_progress_reports_candidates_it_could_not_verify(
+    monkeypatch, result_factory
+):
+    # verify_pending's failure count used to be discarded on both sides, so a
+    # confirmed exact match whose detail fetch failed disappeared with only a
+    # log line. The user needs to know something went unchecked, and that
+    # refreshing retries it.
+    pending_items = [
+        result_factory(SourceGroup.LAW, uid=f"p{i}", title=f"대기법{i}") for i in range(25)
+    ]
+    response = SearchResponse(
+        results=(), pending=(), suggestions=(), errors=(),
+        source_states={}, source_fetched_at={},
+    )
+    streamlit = FakeStreamlit(
+        session_state={
+            "response": response,
+            "pending_queue": pending_items,
+            "pending_total": 25,
+            "pending_checked": 0,
+            "pending_found": 0,
+            "pending_failed": 0,
+        }
+    )
+
+    async def fake_verify_pending(settings, chunk, keyword):
+        return (), 5
+
+    monkeypatch.setattr(app, "_verify_pending", fake_verify_pending)
+
+    app._render_pending_progress(streamlit, object(), ParsedQuery("통합심의"))
+
+    assert streamlit.session_state["pending_failed"] == 5
+    assert "나머지 확인 중… (20 / 25)" in streamlit.text()
+    assert "5건은 확인하지 못했습니다 — 새로고침으로 다시 시도하세요" in streamlit.text()
+
+
+def test_pending_progress_counts_a_swallowed_chunk_failure_as_unverified(
+    monkeypatch, result_factory
+):
+    # The broad except must stay a swallow -- a transient chunk failure can
+    # never become a hard crash -- but the 20 candidates it drops must still be
+    # counted, not silently discarded.
+    pending_items = [
+        result_factory(SourceGroup.LAW, uid=f"p{i}", title=f"대기법{i}") for i in range(3)
+    ]
+    response = SearchResponse(
+        results=(), pending=(), suggestions=(), errors=(),
+        source_states={}, source_fetched_at={},
+    )
+    streamlit = FakeStreamlit(
+        session_state={
+            "response": response,
+            "pending_queue": pending_items,
+            "pending_total": 3,
+            "pending_checked": 0,
+            "pending_found": 0,
+            "pending_failed": 0,
+        }
+    )
+
+    async def fake_verify_pending(settings, chunk, keyword):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(app, "_verify_pending", fake_verify_pending)
+
+    app._render_pending_progress(streamlit, object(), ParsedQuery("통합심의"))
+
+    assert streamlit.reruns == 0
+    assert streamlit.session_state["pending_failed"] == 3
+    assert streamlit.session_state["pending_queue"] == []
+
+
+def test_pending_status_reports_unverified_candidates_after_completion(monkeypatch):
+    streamlit = FakeStreamlit(
+        session_state={
+            "pending_queue": [],
+            "pending_total": 25,
+            "pending_checked": 25,
+            "pending_found": 2,
+            "pending_failed": 4,
+        }
+    )
+    monkeypatch.setattr(app, "_render_pending_progress", lambda *a, **k: None)
+
+    app._render_pending_status(streamlit, object(), ParsedQuery("통합심의"))
+
+    assert "전체 확인 완료 (추가로 2건 발견)" in streamlit.text()
+    assert "4건은 확인하지 못했습니다 — 새로고침으로 다시 시도하세요" in streamlit.text()
+
+
+def test_pending_status_says_nothing_about_failures_when_there_were_none(monkeypatch):
+    streamlit = FakeStreamlit(
+        session_state={
+            "pending_queue": [],
+            "pending_total": 25,
+            "pending_checked": 25,
+            "pending_found": 0,
+            "pending_failed": 0,
+        }
+    )
+    monkeypatch.setattr(app, "_render_pending_progress", lambda *a, **k: None)
+
+    app._render_pending_status(streamlit, object(), ParsedQuery("통합심의"))
+
+    assert "확인하지 못했습니다" not in streamlit.text()
+
+
 def test_pending_progress_leaves_the_completion_caption_to_the_gate(monkeypatch):
     # The completion caption used to be duplicated inside the fragment -- both
     # in its empty-queue early return and again at its end. Only
@@ -895,7 +1011,7 @@ def test_pending_progress_verifies_one_chunk_and_appends_confirmed_results(
     async def fake_verify_pending(settings, chunk, keyword):
         assert chunk == (pending_a, pending_b)
         assert keyword == "통합심의"
-        return (confirmed,)
+        return (confirmed,), 0
 
     monkeypatch.setattr(app, "_verify_pending", fake_verify_pending)
 
@@ -944,7 +1060,7 @@ def test_confirmed_background_result_lifts_its_source_out_of_empty(
     streamlit = FakeStreamlit(session_state=_pending_state(response, [pending]))
 
     async def fake_verify_pending(settings, chunk, keyword):
-        return (confirmed,)
+        return (confirmed,), 0
 
     monkeypatch.setattr(app, "_verify_pending", fake_verify_pending)
 
@@ -982,7 +1098,7 @@ def test_confirmed_background_result_never_downgrades_a_source_state(
     streamlit = FakeStreamlit(session_state=_pending_state(response, [pending]))
 
     async def fake_verify_pending(settings, chunk, keyword):
-        return (confirmed,)
+        return (confirmed,), 0
 
     monkeypatch.setattr(app, "_verify_pending", fake_verify_pending)
 
@@ -1015,7 +1131,7 @@ def test_confirmed_background_result_adds_no_state_for_an_unsearched_source(
     streamlit = FakeStreamlit(session_state=_pending_state(response, [pending]))
 
     async def fake_verify_pending(settings, chunk, keyword):
-        return (confirmed,)
+        return (confirmed,), 0
 
     monkeypatch.setattr(app, "_verify_pending", fake_verify_pending)
 
@@ -1045,7 +1161,7 @@ def test_pending_progress_shows_running_total_while_queue_remains(monkeypatch, r
 
     async def fake_verify_pending(settings, chunk, keyword):
         assert len(chunk) == 20
-        return ()
+        return (), 0
 
     monkeypatch.setattr(app, "_verify_pending", fake_verify_pending)
 

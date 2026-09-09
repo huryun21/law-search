@@ -122,7 +122,7 @@ async def _search(settings: Settings, parsed: ParsedQuery, refresh: bool) -> Sea
 
 async def _verify_pending(
     settings: Settings, pending: tuple[SearchResult, ...], keyword: str
-) -> tuple[SearchResult, ...]:
+) -> tuple[tuple[SearchResult, ...], int]:
     async with LawApiClient(resolve_api_key(settings, _app_secrets())) as api:
         service = SearchService(api, CacheStore(settings.cache_path), lambda: datetime.now(UTC))
         return await service.verify_pending(pending, keyword)
@@ -309,6 +309,7 @@ def _clear_response(st: Any) -> None:
     st.session_state.pop("pending_total", None)
     st.session_state.pop("pending_checked", None)
     st.session_state.pop("pending_found", None)
+    st.session_state.pop("pending_failed", None)
     _reset_workspace(st)
     _clear_detail_state(st)
 
@@ -332,6 +333,7 @@ def _perform_search(st: Any, settings: Settings, parsed: ParsedQuery, refresh: b
     st.session_state.pending_total = len(response.pending)
     st.session_state.pending_checked = 0
     st.session_state.pending_found = 0
+    st.session_state.pending_failed = 0
 
 
 def _render_results(
@@ -399,6 +401,22 @@ def _render_pending_status(st: Any, settings: Settings, parsed: ParsedQuery) -> 
         st.caption(
             f"전체 확인 완료 (추가로 {found}건 발견)" if found else "전체 확인 완료"
         )
+        _render_pending_failures(st)
+
+
+def _render_pending_failures(st: Any) -> None:
+    """Say how many deferred candidates could never be checked.
+
+    A candidate whose detail fetch fails is dropped, and one of those drops may
+    have been a genuine exact match. Refreshing re-runs the search against the
+    live API, so the user has a way to act on this; saying nothing would make a
+    confirmed match disappear with no trace outside the log.
+    """
+    failed = st.session_state.get("pending_failed", 0)
+    if failed:
+        st.caption(
+            f"{failed}건은 확인하지 못했습니다 — 새로고침으로 다시 시도하세요"
+        )
 
 
 def _render_pending_progress(st: Any, settings: Settings, parsed: ParsedQuery) -> None:
@@ -410,12 +428,15 @@ def _render_pending_progress(st: Any, settings: Settings, parsed: ParsedQuery) -
     chunk = tuple(queue[:_PENDING_CHUNK_SIZE])
     remaining = queue[_PENDING_CHUNK_SIZE:]
     try:
-        confirmed = _run(_verify_pending(settings, chunk, parsed.keyword))
+        confirmed, failed = _run(_verify_pending(settings, chunk, parsed.keyword))
     except Exception as error:
+        # Still never a hard crash -- but the whole chunk went unchecked, so
+        # count it as failed rather than letting it vanish behind a log line.
         _logger.warning("나머지 결과 확인 실패: %s", type(error).__name__)
-        confirmed = ()
+        confirmed, failed = (), len(chunk)
     st.session_state.pending_queue = remaining
     st.session_state.pending_checked = st.session_state.get("pending_checked", 0) + len(chunk)
+    st.session_state.pending_failed = st.session_state.get("pending_failed", 0) + failed
     if confirmed:
         st.session_state.pending_found = st.session_state.get("pending_found", 0) + len(confirmed)
         response = st.session_state.response
@@ -436,6 +457,7 @@ def _render_pending_progress(st: Any, settings: Settings, parsed: ParsedQuery) -
         total = st.session_state.get("pending_total", 0)
         checked = st.session_state.get("pending_checked", 0)
         st.caption(f"나머지 확인 중… ({checked} / {total})")
+        _render_pending_failures(st)
 
 
 def _render_card(st: Any, card: CardView, keyword: str) -> None:
