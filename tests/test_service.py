@@ -758,10 +758,11 @@ def test_verify_pending_keeps_only_exact_matches(service_factory, result_factory
     service, fake_api = service_factory()
     candidate = result_factory(SourceGroup.LAW, uid="p1", title="대기 법령")
 
-    confirmed = run(service.verify_pending((candidate,), "주차 단속"))
+    confirmed, failed = run(service.verify_pending((candidate,), "주차 단속"))
 
     assert len(confirmed) == 1
     assert confirmed[0].match_context is not None
+    assert failed == 0
     assert [op for op, _ in fake_api.requests].count("detail") == 1
 
 
@@ -771,9 +772,12 @@ def test_verify_pending_drops_candidates_with_no_exact_context(
     service, fake_api = service_factory()
     candidate = result_factory(SourceGroup.LAW, uid="p1", title="대기 법령")
 
-    confirmed = run(service.verify_pending((candidate,), "전혀 다른 문구"))
+    confirmed, failed = run(service.verify_pending((candidate,), "전혀 다른 문구"))
 
     assert confirmed == ()
+    # Checked and correctly rejected -- not a failure. Counting it would be
+    # indistinguishable from a real match this search never got to see.
+    assert failed == 0
 
 
 def test_verify_pending_drops_candidates_when_detail_fetch_fails(
@@ -782,10 +786,30 @@ def test_verify_pending_drops_candidates_when_detail_fetch_fails(
     service, fake_api = service_factory(fail={"detail"})
     candidate = result_factory(SourceGroup.LAW, uid="p1", title="대기 법령")
 
-    confirmed = run(service.verify_pending((candidate,), "주차 단속"))
+    confirmed, failed = run(service.verify_pending((candidate,), "주차 단속"))
 
     assert confirmed == ()
+    assert failed == 1
     assert [op for op, _ in fake_api.requests].count("detail") == 1
+
+
+def test_verify_pending_counts_every_candidate_it_could_not_check(
+    service_factory, result_factory
+):
+    # verify_pending used to discard _verify_one's `failed` flag entirely, so a
+    # confirmed exact match whose detail fetch failed vanished with no signal
+    # the caller could act on. The count must cover every unchecked candidate,
+    # not just report that something went wrong.
+    service, _ = service_factory(fail={"detail"})
+    candidates = tuple(
+        result_factory(SourceGroup.LAW, uid=f"p{index}", title=f"대기 법령{index}")
+        for index in range(3)
+    )
+
+    confirmed, failed = run(service.verify_pending(candidates, "주차 단속"))
+
+    assert confirmed == ()
+    assert failed == 3
 
 
 def test_token_intersection_runs_only_after_both_variants_are_empty(
