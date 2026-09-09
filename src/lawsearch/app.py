@@ -40,6 +40,7 @@ from lawsearch.viewmodels import (
     fully_qualified_region_name,
     is_official_url,
     sidebar_sections,
+    source_state_key,
 )
 
 if TYPE_CHECKING:
@@ -360,6 +361,27 @@ def _render_results(
 _PENDING_CHUNK_SIZE = 20
 
 
+def _states_with_confirmed(
+    response: SearchResponse, confirmed: tuple[SearchResult, ...]
+) -> Mapping[str, SourceState]:
+    """``response.source_states`` with every source that just gained a confirmed
+    background match lifted out of EMPTY.
+
+    A source whose priority pass retained nothing is EMPTY, so its group keeps
+    rendering "검색 결과 없음" even once background verification appends real
+    confirmed matches for it. Only EMPTY is lifted -- never a downgrade -- and a
+    source with no state at all is left alone, since SearchResponse requires a
+    retrieval timestamp for every non-ERROR state and this has none to offer.
+    An EMPTY source already carries one, so the upgrade adds no timestamp.
+    """
+    states = dict(response.source_states)
+    for result in confirmed:
+        key = source_state_key(result.source)
+        if states.get(key) is SourceState.EMPTY:
+            states[key] = SourceState.LIVE
+    return states
+
+
 def _render_pending_progress(st: Any, settings: Settings, parsed: ParsedQuery) -> None:
     queue = st.session_state.get("pending_queue")
     if not queue:
@@ -382,7 +404,11 @@ def _render_pending_progress(st: Any, settings: Settings, parsed: ParsedQuery) -
         st.session_state.pending_found = st.session_state.get("pending_found", 0) + len(confirmed)
         response = st.session_state.response
         combined = rank_results(response.results + confirmed, parsed.region, parsed.keyword)
-        st.session_state.response = replace(response, results=combined)
+        st.session_state.response = replace(
+            response,
+            results=combined,
+            source_states=_states_with_confirmed(response, confirmed),
+        )
         # All state this tick needs to persist (queue/counters/response) is already
         # written above. Force a full-page rerun so main()'s outer _render_results/
         # _render_sidebar calls (which run outside this fragment) pick up the new
