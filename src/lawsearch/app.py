@@ -22,6 +22,7 @@ from lawsearch.models import (
     SearchResult,
     SourceState,
 )
+from lawsearch.prioritization import PRIORITY_KEYWORDS
 from lawsearch.query import QueryError, parse_query
 from lawsearch.regions import RegionRegistry
 from lawsearch.service import SearchService
@@ -113,7 +114,7 @@ def _app_secrets() -> Mapping[str, str]:
 async def _search(settings: Settings, parsed: ParsedQuery, refresh: bool) -> SearchResponse:
     async with LawApiClient(resolve_api_key(settings, _app_secrets())) as api:
         service = SearchService(api, CacheStore(settings.cache_path), lambda: datetime.now(UTC))
-        return await service.search(parsed, refresh=refresh)
+        return await service.search(parsed, refresh=refresh, priority_keywords=PRIORITY_KEYWORDS)
 
 
 async def _contexts(
@@ -292,6 +293,10 @@ def _clear_ambiguity(st: Any) -> None:
 def _clear_response(st: Any) -> None:
     st.session_state.pop("response", None)
     st.session_state.pop("parsed_query", None)
+    st.session_state.pop("pending_queue", None)
+    st.session_state.pop("pending_total", None)
+    st.session_state.pop("pending_checked", None)
+    st.session_state.pop("pending_found", None)
     _reset_workspace(st)
     _clear_detail_state(st)
 
@@ -311,6 +316,10 @@ def _perform_search(st: Any, settings: Settings, parsed: ParsedQuery, refresh: b
         return
     st.session_state.parsed_query = parsed
     st.session_state.response = response
+    st.session_state.pending_queue = list(response.pending)
+    st.session_state.pending_total = len(response.pending)
+    st.session_state.pending_checked = 0
+    st.session_state.pending_found = 0
 
 
 def _render_results(

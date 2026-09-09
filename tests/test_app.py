@@ -168,7 +168,14 @@ def test_refresh_forwards_saved_query_and_refresh_flag(monkeypatch, pyeongtaek):
     parsed = ParsedQuery("주차 대수", pyeongtaek)
     streamlit = ControllerStub()
     streamlit.spinner = lambda message: nullcontext()
-    response = object()
+    response = SearchResponse(
+        results=(),
+        pending=(),
+        suggestions=(),
+        errors=(),
+        source_states={},
+        source_fetched_at={},
+    )
 
     async def search(settings, actual, refresh):
         assert actual == parsed
@@ -256,7 +263,14 @@ def test_new_search_resets_workspace_and_detail_state(monkeypatch):
     streamlit.spinner = lambda message: nullcontext()
 
     async def fake_search(settings, parsed, refresh):
-        return object()
+        return SearchResponse(
+            results=(),
+            pending=(),
+            suggestions=(),
+            errors=(),
+            source_states={},
+            source_fetched_at={},
+        )
 
     monkeypatch.setattr(app, "_search", fake_search)
 
@@ -268,6 +282,48 @@ def test_new_search_resets_workspace_and_detail_state(monkeypatch):
         isinstance(key, str) and key.startswith("detail-")
         for key in streamlit.session_state
     )
+
+
+def test_perform_search_seeds_pending_queue_from_response(monkeypatch, result_factory):
+    streamlit = ControllerStub()
+    streamlit.spinner = lambda message: nullcontext()
+    pending_result = result_factory(SourceGroup.LAW, uid="p1", title="대기 법령")
+    response = SearchResponse(
+        results=(),
+        pending=(pending_result,),
+        suggestions=(),
+        errors=(),
+        source_states={},
+        source_fetched_at={},
+    )
+
+    async def fake_search(settings, parsed, refresh):
+        return response
+
+    monkeypatch.setattr(app, "_search", fake_search)
+
+    app._perform_search(streamlit, object(), ParsedQuery("통합심의"), refresh=False)
+
+    assert streamlit.session_state["pending_queue"] == [pending_result]
+    assert streamlit.session_state["pending_total"] == 1
+    assert streamlit.session_state["pending_checked"] == 0
+    assert streamlit.session_state["pending_found"] == 0
+
+
+def test_clear_response_also_clears_pending_state():
+    streamlit = ControllerStub(
+        {
+            "pending_queue": [1, 2],
+            "pending_total": 2,
+            "pending_checked": 1,
+            "pending_found": 0,
+        }
+    )
+
+    app._clear_response(streamlit)
+
+    for key in ("pending_queue", "pending_total", "pending_checked", "pending_found"):
+        assert key not in streamlit.session_state
 
 
 def test_search_client_is_closed_in_the_same_event_loop(monkeypatch, tmp_path):
@@ -287,7 +343,7 @@ def test_search_client_is_closed_in_the_same_event_loop(monkeypatch, tmp_path):
         def __init__(self, api, cache, clock):
             self.api = api
 
-        async def search(self, parsed, refresh=False):
+        async def search(self, parsed, refresh=False, priority_keywords=()):
             events.append(("searched", refresh, id(asyncio.get_running_loop())))
             return "response"
 
