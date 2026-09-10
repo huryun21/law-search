@@ -78,6 +78,48 @@ def test_search_form_submits_entered_query():
     assert form_state == {"active": False, "enter_to_submit": True}
 
 
+def test_search_input_label_is_collapsed_so_it_sits_on_the_button_row():
+    # st.text_input's own visible label pushes the input box down a row
+    # below the button next to it, since the button has no such label. Hide
+    # the label (the placeholder already says what the field is for) so the
+    # input and the 검색 button line up on the same row.
+    captured = {}
+
+    class InputColumn:
+        def text_input(self, *args, **kwargs):
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+            return ""
+
+    class SubmitColumn:
+        def form_submit_button(self, *args, **kwargs):
+            return False
+
+    class StreamlitStub:
+        def form(self, key, *, enter_to_submit, **kwargs):
+            from contextlib import nullcontext
+
+            return nullcontext()
+
+        def columns(self, widths):
+            return InputColumn(), SubmitColumn()
+
+    app._render_search_form(StreamlitStub())
+
+    assert captured["kwargs"].get("label_visibility") == "collapsed"
+
+
+def test_top_bar_links_to_law_go_kr_ai_search():
+    streamlit = FakeStreamlit()
+
+    app._render_top_bar(streamlit)
+
+    link_calls = [args for name, args, _ in streamlit.calls if name == "link_button"]
+    assert any(
+        "law.go.kr" in url and "AI" in label for label, url, *_ in link_calls
+    )
+
+
 def test_plain_query_does_not_inherit_previous_region(monkeypatch, pyeongtaek):
     streamlit = ControllerStub(
         {
@@ -320,6 +362,7 @@ def test_clear_response_also_clears_pending_state():
             "pending_found": 0,
             "pending_failed": 1,
             "pending_last_rerun_at": 123.0,
+            "newly_confirmed_keys": {"law:p1"},
         }
     )
 
@@ -332,6 +375,7 @@ def test_clear_response_also_clears_pending_state():
         "pending_found",
         "pending_failed",
         "pending_last_rerun_at",
+        "newly_confirmed_keys",
     ):
         assert key not in streamlit.session_state
 
@@ -592,6 +636,46 @@ def test_results_view_says_nothing_extra_when_nothing_was_deferred(result_factor
     app._render_results(streamlit, object(), response, ParsedQuery("주차장"))
 
     assert "info" not in streamlit.names()
+
+
+def test_card_shows_a_badge_for_a_newly_confirmed_result(result_factory):
+    hit = replace(
+        result_factory(SourceGroup.LAW, uid="l1", title="건축법"),
+        scope=SearchScope.BODY,
+        match_context="제1조 — 건축",
+    )
+    response = SearchResponse(
+        results=(hit,),
+        suggestions=(),
+        errors=(),
+        source_states={"laws": SourceState.LIVE},
+        source_fetched_at={"laws": _fetched()},
+    )
+    streamlit = FakeStreamlit(session_state={"newly_confirmed_keys": {"law:l1"}})
+
+    app._render_results(streamlit, object(), response, ParsedQuery("주차장"))
+
+    assert "새로 확인된 결과" in streamlit.text()
+
+
+def test_card_has_no_badge_when_not_newly_confirmed(result_factory):
+    hit = replace(
+        result_factory(SourceGroup.LAW, uid="l1", title="건축법"),
+        scope=SearchScope.BODY,
+        match_context="제1조 — 건축",
+    )
+    response = SearchResponse(
+        results=(hit,),
+        suggestions=(),
+        errors=(),
+        source_states={"laws": SourceState.LIVE},
+        source_fetched_at={"laws": _fetched()},
+    )
+    streamlit = FakeStreamlit()
+
+    app._render_results(streamlit, object(), response, ParsedQuery("주차장"))
+
+    assert "새로 확인된 결과" not in streamlit.text()
 
 
 def test_sidebar_lists_every_result_as_a_nav_button(result_factory):
@@ -1018,8 +1102,11 @@ def test_pending_progress_counts_a_swallowed_chunk_failure_as_unverified(
     monkeypatch, result_factory
 ):
     # The broad except must stay a swallow -- a transient chunk failure can
-    # never become a hard crash -- but the 20 candidates it drops must still be
-    # counted, not silently discarded.
+    # never become a hard crash -- but the candidates it drops must still be
+    # counted, not silently discarded. This is also the final chunk (queue
+    # drains to empty), so it must rerun to surface the completion/failure
+    # caption -- otherwise a search that ends on a failed chunk would look
+    # stuck at "나머지 확인 중" forever.
     pending_items = [
         result_factory(SourceGroup.LAW, uid=f"p{i}", title=f"대기법{i}") for i in range(3)
     ]
@@ -1043,11 +1130,48 @@ def test_pending_progress_counts_a_swallowed_chunk_failure_as_unverified(
 
     monkeypatch.setattr(app, "_verify_pending", fake_verify_pending)
 
+    with pytest.raises(Rerun):
+        app._render_pending_progress(streamlit, object(), ParsedQuery("통합심의"))
+
+    assert streamlit.reruns == 1
+    assert streamlit.session_state["pending_failed"] == 3
+    assert streamlit.session_state["pending_queue"] == []
+
+
+def test_pending_progress_does_not_rerun_on_a_middle_chunk_when_verification_raises(
+    monkeypatch, result_factory
+):
+    # Unlike the final-chunk case above, a mid-queue failure has nothing new
+    # to surface and more work still queued -- it must stay quiet, the same
+    # as a mid-queue chunk that simply confirms nothing.
+    pending_items = [
+        result_factory(SourceGroup.LAW, uid=f"p{i}", title=f"대기법{i}") for i in range(15)
+    ]
+    response = SearchResponse(
+        results=(), pending=(), suggestions=(), errors=(),
+        source_states={}, source_fetched_at={},
+    )
+    streamlit = FakeStreamlit(
+        session_state={
+            "response": response,
+            "pending_queue": pending_items,
+            "pending_total": 15,
+            "pending_checked": 0,
+            "pending_found": 0,
+            "pending_failed": 0,
+        }
+    )
+
+    async def fake_verify_pending(settings, chunk, keyword):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(app, "_verify_pending", fake_verify_pending)
+
     app._render_pending_progress(streamlit, object(), ParsedQuery("통합심의"))
 
     assert streamlit.reruns == 0
-    assert streamlit.session_state["pending_failed"] == 3
-    assert streamlit.session_state["pending_queue"] == []
+    assert len(streamlit.session_state["pending_queue"]) == 15 - app._PENDING_CHUNK_SIZE
+    assert streamlit.session_state["pending_failed"] == app._PENDING_CHUNK_SIZE
 
 
 def test_pending_status_reports_unverified_candidates_after_completion(monkeypatch):
@@ -1147,6 +1271,91 @@ def test_pending_progress_appends_confirmed_results_without_reordering_existing_
         existing_b,
         confirmed,
     )
+
+
+def test_pending_progress_drops_a_confirmed_duplicate_of_an_already_shown_result(
+    monkeypatch, result_factory
+):
+    # A law matched by title is verified and shown immediately; the exact
+    # same law can independently show up as a body-scope candidate (e.g. it
+    # cites its own name somewhere) and get deferred to the background
+    # queue. Confirming that duplicate later must not add a second card for
+    # a document the user is already looking at, and must not badge the
+    # original card as "newly confirmed" either.
+    already_shown = replace(
+        result_factory(SourceGroup.LAW, uid="dup1", title="관세법"),
+        scope=SearchScope.TITLE,
+    )
+    duplicate_pending = replace(
+        result_factory(SourceGroup.LAW, uid="dup1", title="관세법"),
+        scope=SearchScope.BODY,
+    )
+    duplicate_confirmed = replace(duplicate_pending, match_context="일치 문맥")
+    response = SearchResponse(
+        results=(already_shown,),
+        pending=(),
+        suggestions=(),
+        errors=(),
+        source_states={},
+        source_fetched_at={},
+    )
+    streamlit = FakeStreamlit(
+        session_state={
+            "response": response,
+            "pending_queue": [duplicate_pending],
+            "pending_total": 1,
+            "pending_checked": 0,
+            "pending_found": 0,
+        }
+    )
+
+    async def fake_verify_pending(settings, chunk, keyword):
+        return (duplicate_confirmed,), 0
+
+    monkeypatch.setattr(app, "_verify_pending", fake_verify_pending)
+
+    # Still the final chunk (queue drains to empty), so it reruns once to
+    # surface the completion caption -- just with nothing new to show.
+    with pytest.raises(Rerun):
+        app._render_pending_progress(streamlit, object(), ParsedQuery("관세법"))
+
+    assert streamlit.session_state["response"].results == (already_shown,)
+    assert streamlit.session_state.get("newly_confirmed_keys", set()) == set()
+    assert streamlit.reruns == 1
+
+
+def test_pending_progress_marks_confirmed_results_as_newly_confirmed(
+    monkeypatch, result_factory
+):
+    pending_item = result_factory(SourceGroup.LAW, uid="p1", title="대기법1")
+    confirmed = replace(pending_item, match_context="일치 문맥")
+    response = SearchResponse(
+        results=(),
+        pending=(),
+        suggestions=(),
+        errors=(),
+        source_states={},
+        source_fetched_at={},
+    )
+    streamlit = FakeStreamlit(
+        session_state={
+            "response": response,
+            "pending_queue": [pending_item],
+            "pending_total": 1,
+            "pending_checked": 0,
+            "pending_found": 0,
+        }
+    )
+
+    async def fake_verify_pending(settings, chunk, keyword):
+        return (confirmed,), 0
+
+    monkeypatch.setattr(app, "_verify_pending", fake_verify_pending)
+
+    with pytest.raises(Rerun):
+        app._render_pending_progress(streamlit, object(), ParsedQuery("통합심의"))
+
+    assert streamlit.session_state["newly_confirmed_keys"] == {"law:p1"}
 
 
 def test_pending_progress_verifies_one_chunk_and_appends_confirmed_results(
@@ -1372,7 +1581,9 @@ def test_pending_progress_shows_a_progress_bar_while_queue_remains(monkeypatch, 
     assert f"나머지 확인 중… ({app._PENDING_CHUNK_SIZE} / 25)" in args
 
 
-def test_pending_progress_does_not_rerun_when_verification_raises(monkeypatch, result_factory):
+def test_pending_progress_reruns_on_the_final_chunk_even_when_verification_raises(
+    monkeypatch, result_factory
+):
     pending_a = result_factory(SourceGroup.LAW, uid="p1", title="대기법1")
     pending_b = result_factory(SourceGroup.LAW, uid="p2", title="대기법2")
     response = SearchResponse(
@@ -1394,9 +1605,10 @@ def test_pending_progress_does_not_rerun_when_verification_raises(monkeypatch, r
 
     monkeypatch.setattr(app, "_verify_pending", fake_verify_pending)
 
-    app._render_pending_progress(streamlit, object(), ParsedQuery("통합심의"))
+    with pytest.raises(Rerun):
+        app._render_pending_progress(streamlit, object(), ParsedQuery("통합심의"))
 
-    assert streamlit.reruns == 0
+    assert streamlit.reruns == 1
     assert streamlit.session_state["pending_queue"] == []
     assert streamlit.session_state["pending_checked"] == 2
     assert streamlit.session_state["pending_found"] == 0

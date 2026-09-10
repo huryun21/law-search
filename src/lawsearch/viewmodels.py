@@ -140,12 +140,16 @@ def build_grouped_view(
             elif region is not None and is_additional:
                 national_source_count = len(_SOURCE_ORDER) - len(regional_sources)
                 body_priority = title_priority + national_source_count
+            elif is_additional:
+                # No region selected: keep this source's body-only results
+                # right after its own title group instead of pushing every
+                # "additional" group behind every source's title group. The
+                # whole page then follows one consistent per-source order
+                # (법률 title, 법률 body, 대통령령 title, 대통령령 body, ...),
+                # matching the sidebar's order instead of splitting by scope.
+                body_priority = title_priority + 0.5
             else:
-                body_priority = (
-                    len(_SOURCE_ORDER) + priority
-                    if is_additional
-                    else title_priority
-                )
+                body_priority = title_priority
             relevant_body_results, less_relevant_body_results = split_by_relevance(
                 body_results
             )

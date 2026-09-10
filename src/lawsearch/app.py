@@ -40,6 +40,7 @@ from lawsearch.viewmodels import (
     format_timestamp,
     fully_qualified_region_name,
     is_official_url,
+    result_key,
     sidebar_sections,
     source_state_key,
 )
@@ -163,7 +164,9 @@ def _render_search_form(streamlit: Any) -> tuple[str, bool]:
     ):
         query_col, button_col = streamlit.columns([5, 1])
         raw = query_col.text_input(
-            "검색어", placeholder="법령명이나 주제를 입력하세요"
+            "검색어",
+            placeholder="법령명이나 주제를 입력하세요",
+            label_visibility="collapsed",
         )
         submitted = button_col.form_submit_button(
             "검색", type="primary", width="stretch"
@@ -190,6 +193,7 @@ def _render_top_bar(st: Any) -> None:
     st.title("대한민국 법령 통합검색")
     st.caption("예: `주차장법`, `@평택 주차장`, `@경기/평택 주차장`")
     st.caption("출처: 국가법령정보센터 · 참고자료이며 최종 확인은 공식 원문 및 소관기관 기준")
+    st.link_button("법제처 AI 법령검색 열기", "https://www.law.go.kr/LSW/ais/main.do")
 
 
 def _render_workspace_controls(
@@ -264,8 +268,19 @@ def main() -> None:
     elif mode == _VIEW_COMPARE:
         _render_compare(st, settings, response, parsed)
     else:
+        # Reserve the slot right below the search controls before rendering
+        # any cards, but fill it only *after* _render_results has actually
+        # run. _render_pending_status can trigger a full st.rerun() (inside
+        # the fragment, when a chunk confirms new matches), and st.rerun()
+        # aborts the rest of this script run immediately -- calling it before
+        # _render_results left the results never rendering at all whenever a
+        # chunk confirmed something on the very first fragment tick. Once
+        # _render_results has already run, filling this earlier-reserved slot
+        # is safe even if it goes on to call st.rerun().
+        pending_slot = st.empty()
         _render_results(st, settings, response, parsed)
-        _render_pending_status(st, settings, parsed)
+        with pending_slot:
+            _render_pending_status(st, settings, parsed)
 
 
 def _handle_search(st: Any, raw: str, registry: RegionRegistry, settings: Settings, refresh: bool) -> None:
@@ -312,6 +327,7 @@ def _clear_response(st: Any) -> None:
     st.session_state.pop("pending_found", None)
     st.session_state.pop("pending_failed", None)
     st.session_state.pop("pending_last_rerun_at", None)
+    st.session_state.pop("newly_confirmed_keys", None)
     _reset_workspace(st)
     _clear_detail_state(st)
 
@@ -469,39 +485,55 @@ def _render_pending_progress(
     st.session_state.pending_queue = remaining
     st.session_state.pending_checked = st.session_state.get("pending_checked", 0) + len(chunk)
     st.session_state.pending_failed = st.session_state.get("pending_failed", 0) + failed
+    new_results = ()
     if confirmed:
-        st.session_state.pending_found = st.session_state.get("pending_found", 0) + len(confirmed)
         response = st.session_state.response
+        # A law matched by title (verified immediately, already on screen)
+        # can independently show up as a body-scope candidate too -- e.g. it
+        # cites its own name somewhere -- and get deferred to this queue.
+        # Confirming that duplicate later must not add a second card for a
+        # document already shown, and must not badge the original as new.
+        already_present = {(result.source, result.uid) for result in response.results}
+        new_results = tuple(
+            result for result in confirmed
+            if (result.source, result.uid) not in already_present
+        )
+    if new_results:
+        st.session_state.pending_found = st.session_state.get("pending_found", 0) + len(new_results)
+        st.session_state.newly_confirmed_keys = st.session_state.get(
+            "newly_confirmed_keys", set()
+        ) | {result_key(result) for result in new_results}
         # Appended, not re-ranked into the full combined list: re-sorting on
         # every confirming tick let a newly confirmed match jump ahead of
         # results already on screen, shifting cards the user was mid-read on.
         # The new arrivals are still sorted among themselves, just placed
         # after everything already shown.
-        newly_ranked = rank_results(confirmed, parsed.region, parsed.keyword)
+        newly_ranked = rank_results(new_results, parsed.region, parsed.keyword)
         combined = response.results + newly_ranked
         st.session_state.response = replace(
             response,
             results=combined,
-            source_states=_states_with_confirmed(response, confirmed),
+            source_states=_states_with_confirmed(response, new_results),
         )
-        # All state this tick needs to persist (queue/counters/response) is already
-        # written above, whether or not this tick reruns. A full-page rerun makes
-        # main()'s outer _render_results/_render_sidebar (which run outside this
-        # fragment) pick up the new results, but doing that on every confirming
-        # chunk means the whole page reloads roughly every 2s on any search with
-        # a decent hit rate -- long enough to make the app feel like it never
-        # settles, and too fast for the progress bar below to ever stay on
-        # screen. Batch confirmed matches instead and only rerun once
-        # _PENDING_RERUN_INTERVAL_SECONDS have passed since the last rerun, with
-        # one exception: the final chunk (remaining empty) always reruns, or a
-        # match confirmed right as the queue drains would stay invisible until
-        # some unrelated full rerun -- the exact bug the original fix solved.
-        now = monotonic()
-        last_rerun = st.session_state.get("pending_last_rerun_at")
-        due = last_rerun is None or (now - last_rerun) >= _PENDING_RERUN_INTERVAL_SECONDS
-        if due or not remaining:
-            st.session_state.pending_last_rerun_at = now
-            st.rerun()
+    # All state this tick needs to persist (queue/counters/response) is already
+    # written above, whether or not this tick reruns. A full-page rerun makes
+    # main()'s outer _render_results/_render_sidebar (which run outside this
+    # fragment) pick up the new results, but doing that on every confirming
+    # chunk means the whole page reloads roughly every 2s on any search with
+    # a decent hit rate -- long enough to make the app feel like it never
+    # settles, and too fast for the progress bar below to ever stay on
+    # screen. Batch confirmed matches instead and only rerun once
+    # _PENDING_RERUN_INTERVAL_SECONDS have passed since the last rerun, with
+    # one exception: the final chunk (remaining empty) always reruns --
+    # whether or not it found anything new -- or the completion/failure
+    # caption (rendered outside this fragment, only on a full rerun) would
+    # stay invisible until some unrelated click.
+    now = monotonic()
+    last_rerun = st.session_state.get("pending_last_rerun_at")
+    due = last_rerun is None or (now - last_rerun) >= _PENDING_RERUN_INTERVAL_SECONDS
+    if not remaining or (new_results and due):
+        st.session_state.pending_last_rerun_at = now
+        st.rerun()
     if remaining:
         total = st.session_state.get("pending_total", 0)
         checked = st.session_state.get("pending_checked", 0)
@@ -512,6 +544,8 @@ def _render_pending_progress(
 
 def _render_card(st: Any, card: CardView, keyword: str) -> None:
     with st.container(border=True):
+        if card.key in st.session_state.get("newly_confirmed_keys", ()):
+            st.caption("새로 확인된 결과")
         st.markdown(f"**{card.title}**")
         st.caption(" · ".join(card.meta_fields))
         st.caption(card.match_kind)

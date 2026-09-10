@@ -1,4 +1,4 @@
-from lawsearch.models import SearchResult, SourceState
+from lawsearch.models import SearchResult, SearchScope, SourceState
 
 
 PRIORITY_KEYWORDS: tuple[str, ...] = (
@@ -33,14 +33,19 @@ def classify_candidates(
 ]:
     """Split candidates into (priority, rest) by whether their title contains
     any of ``keywords``. This only affects verification *order* — it never
-    decides whether a result is ultimately accepted."""
+    decides whether a result is ultimately accepted.
+
+    A TITLE-scope result is always priority regardless of keywords: it means
+    the user's own search term is in the document's title, the app's highest
+    priority match (정확 문구 우선), not merely one that happens to fall in a
+    domain this list was tuned for."""
     if not keywords:
         return tuple(candidates), ()
     priority = []
     rest = []
     for item in candidates:
         result, _ = item
-        if _title_matches(result.title, keywords):
+        if result.scope is SearchScope.TITLE or _title_matches(result.title, keywords):
             priority.append(item)
         else:
             rest.append(item)

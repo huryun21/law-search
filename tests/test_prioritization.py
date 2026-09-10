@@ -1,4 +1,4 @@
-from lawsearch.models import SourceState
+from lawsearch.models import SearchScope, SourceState
 from lawsearch.prioritization import (
     PRIORITY_KEYWORDS,
     classify_candidates,
@@ -10,7 +10,9 @@ def test_classify_candidates_splits_by_title_keyword(result_factory):
     from lawsearch.models import SourceGroup
 
     matching = result_factory(SourceGroup.LAW, uid="1", title="도시 및 주거환경정비법")
-    other = result_factory(SourceGroup.LAW, uid="2", title="관세법")
+    other = result_factory(
+        SourceGroup.LAW, uid="2", title="관세법", scope=SearchScope.BODY
+    )
     candidates = (
         (matching, SourceState.LIVE),
         (other, SourceState.LIVE),
@@ -20,6 +22,28 @@ def test_classify_candidates_splits_by_title_keyword(result_factory):
 
     assert priority == ((matching, SourceState.LIVE),)
     assert rest == ((other, SourceState.LIVE),)
+
+
+def test_classify_candidates_always_treats_a_title_scope_match_as_priority(
+    result_factory,
+):
+    """A TITLE-scope result means the user's own search term appears in the
+    document's title -- the app's highest-priority match regardless of domain
+    (CLAUDE.md: 정확 문구 우선). Deferring it to the background queue just
+    because its title has no domain keyword would both delay it and wrongly
+    mark it "새로 확인된 결과" once confirmed, even though it was there from
+    the very first search."""
+    from lawsearch.models import SourceGroup
+
+    title_match = result_factory(
+        SourceGroup.LAW, uid="1", title="관세법", scope=SearchScope.TITLE
+    )
+    candidates = ((title_match, SourceState.LIVE),)
+
+    priority, rest = classify_candidates(candidates, ("도시",))
+
+    assert priority == ((title_match, SourceState.LIVE),)
+    assert rest == ()
 
 
 def test_classify_candidates_treats_all_as_priority_when_no_keywords(result_factory):
