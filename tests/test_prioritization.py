@@ -46,6 +46,30 @@ def test_classify_candidates_always_treats_a_title_scope_match_as_priority(
     assert rest == ()
 
 
+def test_classify_candidates_caps_title_scope_matches_to_bound_first_render_latency(
+    result_factory,
+):
+    """A generic keyword (e.g. "심의") can be an exact TITLE match for
+    hundreds of documents nationwide -- always verifying every one of them
+    synchronously (so none is wrongly badged "새로 확인된 결과") would block
+    the very first page render for minutes. Past the cap, the overflow still
+    goes through the background queue -- verified soon, just not blocking."""
+    from lawsearch.models import SourceGroup
+
+    title_matches = tuple(
+        result_factory(
+            SourceGroup.LAW, uid=str(i), title=f"제목{i} 심의", scope=SearchScope.TITLE
+        )
+        for i in range(3)
+    )
+    candidates = tuple((r, SourceState.LIVE) for r in title_matches)
+
+    priority, rest = classify_candidates(candidates, ("도시",), max_title_priority=2)
+
+    assert priority == candidates[:2]
+    assert rest == candidates[2:]
+
+
 def test_classify_candidates_treats_all_as_priority_when_no_keywords(result_factory):
     from lawsearch.models import SourceGroup
 
