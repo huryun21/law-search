@@ -341,6 +341,12 @@ def _perform_search(st: Any, settings: Settings, parsed: ParsedQuery, refresh: b
 def _render_results(
     st: Any, settings: Settings, response: SearchResponse, parsed: ParsedQuery
 ) -> None:
+    if response.pending:
+        st.info(
+            f"우선순위로 분류된 결과를 먼저 확인해 표시했습니다. "
+            f"나머지 {len(response.pending)}건은 놓치는 항목이 없도록 백그라운드에서 "
+            f"계속 확인 중이며, 완료를 기다리지 않고 위 결과부터 보셔도 됩니다."
+        )
     if response.suggestions:
         st.caption("연관 검색어: " + ", ".join(response.suggestions))
     for message in build_error_messages(response):

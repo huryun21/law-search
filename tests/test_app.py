@@ -544,6 +544,56 @@ def test_results_view_has_no_expander_when_nothing_is_less_relevant(result_facto
     assert "expander" not in streamlit.names()
 
 
+def test_results_view_explains_background_verification_scope_when_pending_exists(
+    result_factory,
+):
+    # A user watching the progress caption tick up over a minute-plus has no
+    # way to know the results already on screen are the priority/relevant
+    # ones and don't require waiting for the rest. Say so once, up front.
+    relevant = replace(
+        result_factory(SourceGroup.LAW, uid="building", title="건축법"),
+        scope=SearchScope.BODY,
+        match_context="제1조 — 건축",
+    )
+    deferred = result_factory(SourceGroup.LAW, uid=f"p{0}", title="관세법")
+    response = SearchResponse(
+        results=(relevant,),
+        pending=(deferred,),
+        suggestions=(),
+        errors=(),
+        source_states={"laws": SourceState.LIVE},
+        source_fetched_at={"laws": _fetched()},
+    )
+    streamlit = FakeStreamlit()
+
+    app._render_results(streamlit, object(), response, ParsedQuery("주차장"))
+
+    info_calls = [args for name, args, _ in streamlit.calls if name == "info"]
+    assert len(info_calls) == 1
+    assert "1건" in info_calls[0][0]
+
+
+def test_results_view_says_nothing_extra_when_nothing_was_deferred(result_factory):
+    relevant = replace(
+        result_factory(SourceGroup.LAW, uid="building", title="건축법"),
+        scope=SearchScope.BODY,
+        match_context="제1조 — 건축",
+    )
+    response = SearchResponse(
+        results=(relevant,),
+        pending=(),
+        suggestions=(),
+        errors=(),
+        source_states={"laws": SourceState.LIVE},
+        source_fetched_at={"laws": _fetched()},
+    )
+    streamlit = FakeStreamlit()
+
+    app._render_results(streamlit, object(), response, ParsedQuery("주차장"))
+
+    assert "info" not in streamlit.names()
+
+
 def test_sidebar_lists_every_result_as_a_nav_button(result_factory):
     response = _card_response(result_factory)
     streamlit = FakeStreamlit(session_state={"response": response})
