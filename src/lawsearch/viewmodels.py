@@ -137,16 +137,18 @@ def build_grouped_view(
             )
             if is_regional_source:
                 body_priority = title_priority + 1
-            elif region is not None and is_additional:
-                national_source_count = len(_SOURCE_ORDER) - len(regional_sources)
-                body_priority = title_priority + national_source_count
             elif is_additional:
-                # No region selected: keep this source's body-only results
-                # right after its own title group instead of pushing every
-                # "additional" group behind every source's title group. The
-                # whole page then follows one consistent per-source order
-                # (법률 title, 법률 body, 대통령령 title, 대통령령 body, ...),
-                # matching the sidebar's order instead of splitting by scope.
+                # Keep this national source's body-only results right after
+                # its own title group instead of pushing every "additional"
+                # group behind every national source's title group -- whether
+                # or not a region is selected. The whole page then follows
+                # one consistent per-source order (법률 title, 법률 body,
+                # 대통령령 title, 대통령령 body, ...), matching the sidebar's
+                # order instead of splitting by scope. This used to differ
+                # by region: with one selected, a national source with only
+                # a body match (e.g. 법률) rendered behind every national
+                # source that happened to have a title match (e.g. 행정규칙),
+                # even though 행정규칙 sorts after 법률 in the sidebar.
                 body_priority = title_priority + 0.5
             else:
                 body_priority = title_priority

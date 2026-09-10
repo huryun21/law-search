@@ -233,6 +233,52 @@ def test_a_later_sources_title_match_does_not_jump_ahead_of_an_earlier_sources_b
     ]
 
 
+def test_a_later_national_sources_title_match_does_not_jump_ahead_of_an_earlier_national_sources_body_group_with_region(
+    result_factory, pyeongtaek
+):
+    # Same bug as test_a_later_sources_title_match_does_not_jump_ahead_of_an_earlier_sources_body_group,
+    # but reported live specifically for a region-scoped search
+    # ("@평택 통합심의"): among the NATIONAL sources, 행정규칙 (last in
+    # _SOURCE_ORDER) had a title match while 법률 (first) only had a body
+    # match, and 행정규칙 still rendered above 법률 -- the region branch was
+    # never fixed alongside the non-region branch and kept the old "every
+    # additional group sorts behind every national title group" scheme.
+    municipal_title = replace(
+        result_factory(
+            SourceGroup.MUNICIPAL, uid="local", title="평택시 통합심의위원회 설치 조례"
+        ),
+        scope=SearchScope.TITLE,
+    )
+    body_law = replace(
+        result_factory(SourceGroup.LAW, uid="building", title="건축법"),
+        scope=SearchScope.BODY,
+    )
+    title_admin_rule = replace(
+        result_factory(SourceGroup.ADMIN_RULE, uid="rule", title="통합심의위원회 운영세칙"),
+        scope=SearchScope.TITLE,
+    )
+    fetched = datetime(2026, 8, 11, tzinfo=UTC)
+    response = SearchResponse(
+        results=(municipal_title, body_law, title_admin_rule),
+        suggestions=(),
+        errors=(),
+        source_states={
+            "municipal": SourceState.LIVE,
+            "laws": SourceState.LIVE,
+            "admin_rules": SourceState.LIVE,
+        },
+        source_fetched_at={"municipal": fetched, "laws": fetched, "admin_rules": fetched},
+    )
+
+    groups = build_grouped_view(response, pyeongtaek)
+
+    assert [group.label for group in groups] == [
+        "평택시 자치법규",
+        "법률 · 본문 관련 추가 결과",
+        "행정규칙",
+    ]
+
+
 def test_regional_body_results_stay_above_national_title_results(
     result_factory, pyeongtaek
 ):
