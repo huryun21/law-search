@@ -472,7 +472,13 @@ def _render_pending_progress(
     if confirmed:
         st.session_state.pending_found = st.session_state.get("pending_found", 0) + len(confirmed)
         response = st.session_state.response
-        combined = rank_results(response.results + confirmed, parsed.region, parsed.keyword)
+        # Appended, not re-ranked into the full combined list: re-sorting on
+        # every confirming tick let a newly confirmed match jump ahead of
+        # results already on screen, shifting cards the user was mid-read on.
+        # The new arrivals are still sorted among themselves, just placed
+        # after everything already shown.
+        newly_ranked = rank_results(confirmed, parsed.region, parsed.keyword)
+        combined = response.results + newly_ranked
         st.session_state.response = replace(
             response,
             results=combined,
