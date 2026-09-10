@@ -23,7 +23,13 @@ class LawApiClient:
         self._client = httpx.AsyncClient(
             base_url=self._BASE_URL,
             transport=transport,
-            timeout=10.0,
+            # Lowered from 10s (2026-09-10): measured detail-fetch latency is
+            # 300ms-1.1s even at concurrency 16. A request past 6s is very
+            # likely stuck, not just slow -- failing it faster bounds how long
+            # one bad request can hold up an entire verification chunk. A
+            # timed-out fetch is already handled as a graceful "unverified"
+            # result, never as a wrongly-accepted or wrongly-dropped match.
+            timeout=6.0,
             follow_redirects=False,
         )
 

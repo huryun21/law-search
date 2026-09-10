@@ -28,11 +28,21 @@ from lawsearch.ranking import rank_results
 SourceOutcome = tuple[
     tuple[SearchResult, ...], SourceState, bool, datetime | None
 ]
-# Raised from 4 after confirming against the live API that 16 concurrent
-# requests complete with no errors and no visible slowdown per request
-# (2026-09-09). Detail-verification throughput was the main bottleneck behind
-# slow searches once pagination started fetching every page of candidates.
-_DETAIL_VERIFICATION_CONCURRENCY = 8
+# Raised from 4 to 8 on 2026-09-09 after confirming against the live API
+# (from a local machine) that 16 concurrent requests complete with no errors.
+# Detail-verification throughput was the main bottleneck behind slow searches
+# once pagination started fetching every page of candidates.
+#
+# Lowered to 6 on 2026-09-10: the deployed Streamlit Cloud app showed repeated
+# 15-20s stretches with no visible progress (script still "running" per the
+# browser, nothing rendering) and one full container reboot during a
+# large-candidate-pool search, neither reproducible from a local machine
+# against the real API at any concurrency up to 16. The live app's own CPU/
+# network conditions -- not the government API -- are the likely bottleneck,
+# so this trades some of yesterday's throughput gain for a smaller number of
+# simultaneously open connections, reducing the deployed app's resource
+# footprint. Combined with the shorter per-request timeout in api.py.
+_DETAIL_VERIFICATION_CONCURRENCY = 6
 
 
 class SearchValidationError(ValueError):

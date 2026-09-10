@@ -960,7 +960,7 @@ def test_pending_progress_reports_candidates_it_could_not_verify(
     app._render_pending_progress(streamlit, object(), ParsedQuery("통합심의"))
 
     assert streamlit.session_state["pending_failed"] == 5
-    assert "나머지 확인 중… (20 / 25)" in streamlit.text()
+    assert f"나머지 확인 중… ({app._PENDING_CHUNK_SIZE} / 25)" in streamlit.text()
     assert "5건은 확인하지 못했습니다 — 새로고침으로 다시 시도하세요" in streamlit.text()
 
 
@@ -1232,16 +1232,16 @@ def test_pending_progress_shows_running_total_while_queue_remains(monkeypatch, r
     )
 
     async def fake_verify_pending(settings, chunk, keyword):
-        assert len(chunk) == 20
+        assert len(chunk) == app._PENDING_CHUNK_SIZE
         return (), 0
 
     monkeypatch.setattr(app, "_verify_pending", fake_verify_pending)
 
     app._render_pending_progress(streamlit, object(), ParsedQuery("통합심의"))
 
-    assert len(streamlit.session_state["pending_queue"]) == 5
-    assert streamlit.session_state["pending_checked"] == 20
-    assert "나머지 확인 중… (20 / 25)" in streamlit.text()
+    assert len(streamlit.session_state["pending_queue"]) == 25 - app._PENDING_CHUNK_SIZE
+    assert streamlit.session_state["pending_checked"] == app._PENDING_CHUNK_SIZE
+    assert f"나머지 확인 중… ({app._PENDING_CHUNK_SIZE} / 25)" in streamlit.text()
 
 
 def test_pending_progress_shows_a_progress_bar_while_queue_remains(monkeypatch, result_factory):
@@ -1272,8 +1272,8 @@ def test_pending_progress_shows_a_progress_bar_while_queue_remains(monkeypatch, 
     app._render_pending_progress(streamlit, object(), ParsedQuery("통합심의"))
 
     _, args, _ = next(call for call in streamlit.calls if call[0] == "progress")
-    assert args[0] == pytest.approx(20 / 25)
-    assert "나머지 확인 중… (20 / 25)" in args
+    assert args[0] == pytest.approx(app._PENDING_CHUNK_SIZE / 25)
+    assert f"나머지 확인 중… ({app._PENDING_CHUNK_SIZE} / 25)" in args
 
 
 def test_pending_progress_does_not_rerun_when_verification_raises(monkeypatch, result_factory):
