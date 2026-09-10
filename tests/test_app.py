@@ -1103,6 +1103,52 @@ def test_pending_progress_leaves_the_completion_caption_to_the_gate(monkeypatch)
     assert "전체 확인 완료" not in streamlit.text()
 
 
+def test_pending_progress_appends_confirmed_results_without_reordering_existing_ones(
+    monkeypatch, result_factory
+):
+    # Re-ranking the whole combined list on every confirm let a newly
+    # confirmed match jump ahead of already-visible cards mid-read, since a
+    # full re-sort ignores what the user is currently looking at. Appending
+    # instead keeps everything already on screen exactly where it was.
+    existing_a = result_factory(SourceGroup.LAW, uid="e1", title="기존법령가")
+    existing_b = result_factory(SourceGroup.LAW, uid="e2", title="기존법령나")
+    pending_item = result_factory(
+        SourceGroup.LAW, uid="p1", title="통합심의위원회 운영규정"
+    )
+    confirmed = replace(pending_item, match_context="일치 문맥")
+    response = SearchResponse(
+        results=(existing_a, existing_b),
+        pending=(),
+        suggestions=(),
+        errors=(),
+        source_states={},
+        source_fetched_at={},
+    )
+    streamlit = FakeStreamlit(
+        session_state={
+            "response": response,
+            "pending_queue": [pending_item],
+            "pending_total": 1,
+            "pending_checked": 0,
+            "pending_found": 0,
+        }
+    )
+
+    async def fake_verify_pending(settings, chunk, keyword):
+        return (confirmed,), 0
+
+    monkeypatch.setattr(app, "_verify_pending", fake_verify_pending)
+
+    with pytest.raises(Rerun):
+        app._render_pending_progress(streamlit, object(), ParsedQuery("통합심의"))
+
+    assert streamlit.session_state["response"].results == (
+        existing_a,
+        existing_b,
+        confirmed,
+    )
+
+
 def test_pending_progress_verifies_one_chunk_and_appends_confirmed_results(
     monkeypatch, result_factory
 ):
