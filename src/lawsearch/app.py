@@ -371,7 +371,12 @@ def _render_card_rows(st: Any, results: tuple[SearchResult, ...], keyword: str) 
                 _render_card(st, card, keyword)
 
 
-_PENDING_CHUNK_SIZE = 20
+# Lowered from 20 on 2026-09-10, alongside a lower detail-verification
+# concurrency and a shorter per-request timeout: a smaller chunk bounds how
+# long one fragment tick can block on a slow/stuck request before Streamlit
+# gets a chance to repaint, which showed up live as 15-20s stretches with no
+# visible progress on large candidate pools.
+_PENDING_CHUNK_SIZE = 10
 
 
 def _states_with_confirmed(
