@@ -337,6 +337,95 @@ def test_verification_rejecting_every_candidate_does_not_fail_the_whole_search(
     assert response.source_states["admin_rules"] is not SourceState.ERROR
 
 
+def test_partial_verification_failure_does_not_error_a_live_source(tmp_path):
+    # Two body candidates come back from the raw search. One candidate's
+    # detail-fetch (used to verify the exact-phrase match) fails -- e.g. a
+    # timeout during the synchronous verification pass -- so
+    # _verify_body_results reports validation_failed=True. The OTHER
+    # candidate's detail-fetch succeeds with a real exact-phrase match, so
+    # `retained` is non-empty: the source is genuinely showing a live result
+    # right now. Per docs/CLAUDE_HANDOFF.md ("캐시도 없으면 해당 자료원만
+    # 오류로 표시" -- only a source that produced NOTHING gets the error
+    # banner), this must not raise a SourceError for "laws": the old code
+    # used bare `validation_failed` for `error`, while `state` correctly
+    # required `validation_failed and not retained`, so a single flaky
+    # candidate stuck a permanent "failed, please retry" banner on a source
+    # that was working and returning results.
+    from conftest import FakeApi
+    from lawsearch.api import ApiError
+
+    keyword = "화재감지기"
+    ok_record = {
+        "법령일련번호": "111111",
+        "현행연혁코드": "현행",
+        "법령명한글": "소방시설법",
+        "법령ID": "000002",
+        "공포일자": "20250131",
+        "공포번호": "1",
+        "소관부처명": "소방청",
+        "법령구분명": "법률",
+        "시행일자": "20250801",
+        "법령상세링크": "/법령/소방시설법",
+    }
+    timeout_record = dict(
+        ok_record,
+        법령일련번호="222222",
+        법령명한글="건축법",
+        법령ID="000003",
+        법령상세링크="/법령/건축법",
+    )
+    body_payload = {
+        "LawSearch": {
+            "target": "eflaw",
+            "키워드": keyword,
+            "section": "bdyText",
+            "totalCnt": "2",
+            "page": "1",
+            "law": [ok_record, timeout_record],
+        }
+    }
+
+    class PartialDetailFailureApi(FakeApi):
+        async def fetch_detail(self, result):
+            self.calls.add("detail")
+            self.requests.append(("detail", result.uid))
+            if result.uid == "000003":
+                raise ApiError("detail timed out")
+            return {
+                "법령": {
+                    "조문": {
+                        "조문단위": [
+                            {
+                                "조문번호": "1",
+                                "조문제목": "화재감지기 설치",
+                                "조문내용": f"제1조 {keyword} 설치 기준.",
+                            }
+                        ]
+                    }
+                }
+            }
+
+    responses = {
+        ("laws_titles", keyword): empty_payload("laws"),
+        ("laws", keyword): body_payload,
+        ("admin_rules_titles", keyword): empty_payload("admin_rules"),
+        ("admin_rules", keyword): empty_payload("admin_rules"),
+    }
+    api = PartialDetailFailureApi(responses=responses)
+    service = SearchService(
+        api,
+        CacheStore(tmp_path / "partial-detail-failure.db"),
+        lambda: datetime(2026, 8, 18, tzinfo=UTC),
+    )
+
+    response = run(service.search(ParsedQuery(keyword)))
+
+    assert any(item.uid == "000002" for item in response.results)
+    assert not any(item.uid == "000003" for item in response.results)
+    assert response.source_states["laws"] is SourceState.LIVE
+    assert not any(error.source == "laws" for error in response.errors)
+
+
 def test_province_only_region_calls_no_municipal_source(service_factory):
     service, fake_api = service_factory()
     province = Region("경기도", None, "6410000")
