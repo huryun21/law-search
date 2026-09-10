@@ -164,7 +164,14 @@ def test_body_only_hits_are_kept_in_a_collapsed_additional_group(result_factory)
     assert [group.expanded for group in groups] == [True, False]
 
 
-def test_all_title_match_groups_precede_any_body_only_group(result_factory):
+def test_each_sources_body_only_group_follows_its_own_title_group(result_factory):
+    # A body-only ("추가 결과") group used to sort behind every source's title
+    # group, so a source with only a title match (e.g. 행정규칙) could render
+    # above a source that sorts earlier in _SOURCE_ORDER but only has a body
+    # match (e.g. 법률) -- putting the main content out of step with the
+    # sidebar, which always lists sources in _SOURCE_ORDER. Each source's own
+    # body-only group now follows immediately after that same source's title
+    # group, so the whole page follows one consistent per-source order.
     title_law = replace(
         result_factory(SourceGroup.LAW, uid="law", title="주차장법"),
         scope=SearchScope.TITLE,
@@ -190,8 +197,39 @@ def test_all_title_match_groups_precede_any_body_only_group(result_factory):
 
     assert [group.label for group in groups] == [
         "법률",
-        "대통령령",
         "법률 · 본문 관련 추가 결과",
+        "대통령령",
+    ]
+
+
+def test_a_later_sources_title_match_does_not_jump_ahead_of_an_earlier_sources_body_group(
+    result_factory,
+):
+    # The exact scenario reported live: a search where only 행정규칙 (which
+    # sorts last in _SOURCE_ORDER) has a title match, and 법률 (which sorts
+    # first) only has body matches. 행정규칙 must not render above 법률.
+    body_law = replace(
+        result_factory(SourceGroup.LAW, uid="building", title="건축법"),
+        scope=SearchScope.BODY,
+    )
+    title_admin_rule = replace(
+        result_factory(SourceGroup.ADMIN_RULE, uid="rule", title="통합심의위원회 운영세칙"),
+        scope=SearchScope.TITLE,
+    )
+    fetched = datetime(2026, 8, 11, tzinfo=UTC)
+    response = SearchResponse(
+        results=(body_law, title_admin_rule),
+        suggestions=(),
+        errors=(),
+        source_states={"laws": SourceState.LIVE, "admin_rules": SourceState.LIVE},
+        source_fetched_at={"laws": fetched, "admin_rules": fetched},
+    )
+
+    groups = build_grouped_view(response)
+
+    assert [group.label for group in groups] == [
+        "법률 · 본문 관련 추가 결과",
+        "행정규칙",
     ]
 
 
