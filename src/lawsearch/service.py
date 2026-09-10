@@ -243,7 +243,7 @@ class SearchService:
         )
         error = (
             SourceError(name, f"{name} search failed")
-            if validation_failed or any(outcome[2] for outcome in outcomes)
+            if (validation_failed and not retained) or any(outcome[2] for outcome in outcomes)
             else None
         )
         source_fetched_at = (
